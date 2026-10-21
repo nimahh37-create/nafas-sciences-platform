@@ -44,6 +44,10 @@ function buildBank(){
   };
 }
 const BANK = buildBank();
+// ربط بنك أسئلة الرسوم بكل مجال
+Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+  f.figs = (typeof FIGS !== 'undefined' && FIGS[f.code]) ? FIGS[f.code] : [];
+}));
 
 /* ---------- التنقل ---------- */
 function go(id){
@@ -181,13 +185,17 @@ function renderTrain(){
     const p = getProg(fieldKey(curSubject, f));
     const card = el('div','chap');
     const tDone = p.tasks ? p.tasks.done : 0;
+    const at = attempts.filter(a => a.subject === curSubject && a.field === f.code && a.mode === 'mcq');
+    const figAt = attempts.filter(a => a.subject === curSubject && a.field === f.code && a.mode === 'fig');
+    const figBest = figAt.reduce((m, a) => Math.max(m, a.score), 0);
     card.innerHTML =
       '<div class="chap-top"><h4>' + f.title + '</h4><span class="code">' + f.code + '</span></div>' +
-      '<div class="pbar"><i style="width:' + pct(p.mcq.best, 100) + '%"></i></div>' +
-      '<div class="pfoot"><span>أفضل نتيجة: ' + p.mcq.best + '%</span><span>مهام مؤشر: ' + tDone + '/' + f.tasks.length + '</span></div>' +
+      '<div class="pbar"><i style="width:' + pct(Math.max(p.mcq.best, figBest), 100) + '%"></i></div>' +
+      '<div class="pfoot"><span>أفضل نتيجة: ' + p.mcq.best + '%</span><span>محاولات: ' + at.length + '</span><span>مهام: ' + tDone + '/' + f.tasks.length + '</span></div>' +
       '<div class="chap-acts">' +
         '<button class="btn btn-primary btn-sm" data-a="mcq">📝 اختبار (10 أسئلة)</button>' +
         '<button class="btn btn-soft btn-sm" data-a="tasks">🔎 مهام المؤشر (5)</button>' +
+        (f.figs.length ? '<button class="btn btn-ghost btn-sm" data-a="figs">🖼️ الرسوم (' + f.figs.length + ')</button>' : '') +
       '</div>';
     const ind = el('details');
     ind.style.marginTop = '4px';
@@ -196,7 +204,12 @@ function renderTrain(){
       '<ul class="indlist">' + f.ind.map(x => '<li>' + x + '</li>').join('') + '</ul></div>';
     card.appendChild(ind);
     card.querySelectorAll('[data-a]').forEach(btn => {
-      btn.onclick = () => btn.dataset.a === 'mcq' ? startMCQ(curSubject, f) : startTasks(curSubject, f);
+      btn.onclick = () => {
+        const a = btn.dataset.a;
+        if (a === 'mcq') startMCQ(curSubject, f);
+        else if (a === 'tasks') startTasks(curSubject, f);
+        else openFigSets(curSubject, f);
+      };
     });
     grid.appendChild(card);
   });
@@ -204,7 +217,10 @@ function renderTrain(){
 }
 
 /* ---------- اختبار اختيار من متعدد ---------- */
+function showQuiz(){ const q = document.getElementById('quizBox'); if(q) q.hidden = false; }
+
 function startMCQ(sub, f, onlyWrong){
+  showQuiz();
   state.mode = 'mcq'; state.subject = sub; state.field = f;
   state.items = f.mcq.map((q, i) => Object.assign({}, q, { i }));
   if(onlyWrong && state.wrongIds){
@@ -314,6 +330,7 @@ function finishMCQ(){
   attempts.push({
     mode:'mcq', subject:sub, field:f.code, title:f.title, score, correct, total,
     answered: Object.keys(state.answers).length, hints:hintsUsed, retry:!!state.onlyWrong,
+    wrong:wrongIds, attemptNo:p.mcq.attempts,
     date: today(), time:new Date().toLocaleTimeString('ar-SA'),
     xp: correct * 10 + (score >= 80 ? 20 : 0)
   });
@@ -325,10 +342,11 @@ function finishMCQ(){
             : 'لا بأس 💪 راجعي قسم الإثراء، والتدريبات الفردية تساعدكِ أكثر.';
   let html = '<div class="result"><h2>' + (score >= 60 ? '🎉 أحسنتِ!' : '📝 لندرس معاً') + '</h2>' +
     '<div class="big">' + score + '%</div>' +
-    '<p>الإجابات الصحيحة: <b>' + correct + '</b> من ' + total + ' • تلميحات مستخدمة: ' + hintsUsed + '</p>' +
+    '<p>الإجابات الصحيحة: <b>' + correct + '</b> من ' + total + ' • المحاولة رقم ' + p.mcq.attempts + ' • أفضل نتيجة ' + p.mcq.best + '% • تلميحات: ' + hintsUsed + '</p>' +
     '<div class="why"><b>💡 كيف أقرأ نتيجتي؟</b><br>' + msg + '</div>' +
     '<div class="qfoot" style="justify-content:center">' +
       (wrongIds.length ? '<button class="btn btn-soft" data-retrywrong="1">🔄 إعادة الأسئلة الخاطئة (' + wrongIds.length + ')</button>' : '') +
+      (score < 80 ? '<button class="btn btn-soft" data-plan="1">📋 خطتي العلاجية</button>' : '') +
       '<button class="btn btn-primary" data-again="1">🔁 إعادة الاختبار كاملاً</button>' +
       '<button class="btn btn-ghost" data-cert="1">🎓 شهادة الإنجاز</button>' +
       '<button class="btn btn-back" data-back="1">رجوع للمجالات</button>' +
@@ -346,13 +364,140 @@ function finishMCQ(){
   $('#quizBox').innerHTML = html;
   $('#quizBox').querySelectorAll('[data-retrywrong]').forEach(b => b.onclick = () => { state.wrongIds = wrongIds; startMCQ(sub, f, true); });
   $('#quizBox').querySelectorAll('[data-again]').forEach(b => b.onclick = () => startMCQ(sub, f));
+  $('#quizBox').querySelectorAll('[data-plan]').forEach(b => b.onclick = () => showPlan(sub, f));
   $('#quizBox').querySelectorAll('[data-cert]').forEach(b => b.onclick = () => showCert(f.title, score, correct, total));
   $('#quizBox').querySelectorAll('[data-back]').forEach(b => b.onclick = () => { go('train'); });
   renderHub();
 }
 
+/* ---------- بنك أسئلة الرسوم ---------- */
+function figChunks(f){ return Math.ceil(f.figs.length / 10); }
+function openFigSets(sub, f){
+  go('train');
+  showQuiz();
+  const chunks = figChunks(f);
+  let html = '<div class="quiz-head"><div class="qh-top"><h3>🖼️ أسئلة الرسوم والأشكال — ' + f.title + '</h3>' +
+    '<span class="pill">' + f.figs.length + ' سؤالاً</span></div>' +
+    '<p class="muted" style="margin:6px 0 0">مقاطع أصلية من كتاب نافس، تشمل أسئلة الأشكال والجداول. اختاري مجموعة للبدء.</p></div>';
+  html += '<div class="figsets">';
+  for(let c = 0; c < chunks; c++){
+    const n = Math.min(10, f.figs.length - c * 10);
+    html += '<button class="figset" data-set="' + c + '"><b>المجموعة ' + (c + 1) + '</b><span>' + n + ' أسئلة</span></button>';
+  }
+  html += '</div>';
+  $('#quizBox').innerHTML = html;
+  $('#quizBox').querySelectorAll('[data-set]').forEach(b => b.onclick = () => startFigs(sub, f, +b.dataset.set));
+  $('#quizBox').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function startFigs(sub, f, chunk, override){
+  showQuiz();
+  state.mode = 'fig'; state.subject = sub; state.field = f; state.figChunk = chunk;
+  const all = f.figs.map((x, i) => Object.assign({}, x, { i }));
+  state.figAll = all;
+  state.items = override || all.slice(chunk * 10, chunk * 10 + 10);
+  state.idx = 0; state.answers = {}; state.hints = {}; state.startTs = Date.now();
+  state.onlyWrong = !!override;
+  renderFigQuiz();
+  $('#quizBox').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function renderFigQuiz(){
+  const f = state.field, total = state.items.length, q = state.items[state.idx];
+  const answered = Object.keys(state.answers).length;
+  const correct = state.items.filter(x => state.answers[x.i] === x.a).length;
+  const done = state.answers[q.i] !== undefined;
+  const ok = done && state.answers[q.i] === q.a;
+  let html = '<div class="quiz-head"><div class="qh-top"><h3>🖼️ ' + f.title + ' — الرسوم</h3>' +
+    '<div class="qh-stats"><span class="pill"><svg><use href="#i-check"/></svg> صحيح: ' + correct + '</span>' +
+    '<span class="pill">تمت: ' + answered + '/' + total + '</span>' +
+    '<span class="pill tip">من النموذج الرسمي</span></div></div>' +
+    '<div class="pbar"><i style="width:' + pct(answered, total) + '%"></i></div>' +
+    '<div class="qnav">' + state.items.map((x, i) => {
+      const st = state.answers[x.i] === undefined ? '' : (state.answers[x.i] === x.a ? ' done' : ' err');
+      return '<button class="qdot' + st + (i === state.idx ? ' cur' : '') + '" data-go="' + i + '">' + (i + 1) + '</button>';
+    }).join('') + '</div></div>';
+
+  html += '<div class="qcard"><div class="qnum">سؤال الشكل ' + (state.idx + 1) + ' من ' + total + ' — المجال ' + f.code + '</div>' +
+    '<img class="figimg" src="' + q.img + '" alt="سؤال رسم من نافس" data-zoom="' + q.img + '">' +
+    '<p class="muted" style="margin:8px 0 0;font-size:13px">اضغطي على الصورة لتكبيرها، ثم اختاري الحرف الصحيح.</p>' +
+    '<div class="figopts">' + ['أ','ب','ج','د'].map((L, j) => {
+      let cls = 'figopt';
+      if(done){ cls += ' locked'; if(j === q.a) cls += ' correct'; else if(j === state.answers[q.i]) cls += ' wrong'; }
+      return '<button class="' + cls + '" data-pick="' + j + '">' + L + '</button>';
+    }).join('') + '</div>';
+  if(done){
+    html += '<div class="feedback ' + (ok ? 'ok' : 'bad') + '">' +
+      (ok ? '✅ إجابة صحيحة، أحسنتِ! ' : '❌ إجابة غير صحيحة. الصواب: <b>' + ['أ','ب','ج','د'][q.a] + '</b>') +
+      '<div class="enrich"><b>💡 كيف تقرأين سؤال الشكل؟</b> ابدئي بالشكل: ما الذي يوضحه؟ ثم اقرئي السؤال، واستبعدي الخيارات غير المنطقية قبل الاختيار.</div></div>';
+    if(!ok) html += '<div class="qfoot"><button class="btn btn-soft" data-retry="1">🔄 أعيدي محاولة هذا السؤال</button></div>';
+    html += '<div class="qfoot">' +
+      (state.idx > 0 ? '<button class="btn btn-back" data-nav="-1">السابق</button>' : '') +
+      (state.idx < total - 1 ? '<button class="btn btn-primary" data-nav="1">التالي ➜</button>' : '') +
+      '<button class="btn btn-ghost" data-finish="1">🏁 عرض النتيجة</button></div>';
+  }
+  html += '</div>';
+  $('#quizBox').innerHTML = html;
+  $('#quizBox').querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+    if(state.answers[q.i] !== undefined) return;
+    state.answers[q.i] = +b.dataset.pick; renderFigQuiz();
+  });
+  $('#quizBox').querySelectorAll('[data-nav]').forEach(b => b.onclick = () => {
+    state.idx = Math.max(0, Math.min(total - 1, state.idx + +b.dataset.nav)); renderFigQuiz();
+  });
+  $('#quizBox').querySelectorAll('[data-go]').forEach(b => b.onclick = () => { state.idx = +b.dataset.go; renderFigQuiz(); });
+  $('#quizBox').querySelectorAll('[data-retry]').forEach(b => b.onclick = () => { delete state.answers[q.i]; renderFigQuiz(); });
+  $('#quizBox').querySelectorAll('[data-finish]').forEach(b => b.onclick = () => finishFigs());
+  $('#quizBox').querySelectorAll('[data-zoom]').forEach(img => img.onclick = () => {
+    $('#modalBox').innerHTML = '<img src="' + img.dataset.zoom + '" style="width:100%;border-radius:12px">' +
+      '<div class="qfoot" style="justify-content:center"><button class="btn btn-primary" onclick="document.getElementById(\'modal\').hidden=true">إغلاق</button></div>';
+    $('#modal').hidden = false;
+  });
+}
+function finishFigs(){
+  const f = state.field, sub = state.subject, total = state.items.length;
+  const correct = state.items.filter(q => state.answers[q.i] === q.a).length;
+  const score = pct(correct, total);
+  const wrongIds = state.items.filter(q => state.answers[q.i] !== q.a).map(q => q.i);
+  const k = fieldKey(sub, f), p = getProg(k);
+  p.fig = p.fig || { best:0, attempts:0 };
+  p.fig.attempts++; p.fig.best = Math.max(p.fig.best, score); p.last = Date.now();
+  setProg(k, p);
+  attempts.push({ mode:'fig', subject:sub, field:f.code, title:f.title + ' — الرسوم (م' + (state.figChunk + 1) + ')',
+    score, correct, total, answered:Object.keys(state.answers).length, hints:0, retry:!!state.onlyWrong,
+    wrong:wrongIds, date:today(), time:new Date().toLocaleTimeString('ar-SA'), xp: correct * 10 });
+  s(K.attempts, attempts);
+  let html = '<div class="result"><h2>' + (score >= 60 ? '🎉 أحسنتِ في أسئلة الرسوم!' : '📘 راجعي الأشكال معاً') + '</h2>' +
+    '<div class="big">' + score + '%</div>' +
+    '<p>الإجابات الصحيحة: <b>' + correct + '</b> من ' + total + ' • المحاولة رقم ' + p.fig.attempts + ' • أفضل نتيجة ' + p.fig.best + '%</p>' +
+    '<div class="why"><b>💡 خطة سريعة:</b> أسئلة الشكل تحتاج قراءة الصورة أولاً: ما العنوان؟ ما المحور؟ ما المقصود بالسهم؟ ثم اقرئي السؤال واستبعدي الخيارات.</div>' +
+    '<div class="qfoot" style="justify-content:center">' +
+      (wrongIds.length ? '<button class="btn btn-soft" data-wrong="1">🔄 أعيدي الأسئلة الخاطئة (' + wrongIds.length + ')</button>' : '') +
+      '<button class="btn btn-primary" data-again="1">🔁 إعادة المجموعة كاملة</button>' +
+      '<button class="btn btn-ghost" data-cert="1">🎓 شهادة</button>' +
+      '<button class="btn btn-back" data-back="1">رجوع للمجالات</button></div></div>';
+  html += '<div class="card"><h3>🖼️ مراجعة أسئلة الشكل</h3>' + state.items.map(q => {
+    const a = state.answers[q.i], okk = a === q.a;
+    return '<div class="review-row ' + (okk ? 'ok' : 'bad') + '"><div class="rq">' + (state.items.indexOf(q) + 1) + ') ' + (okk ? 'إجابة صحيحة ✅' : (a === undefined ? 'لم تجيبي' : 'إجابتك: ' + ['أ','ب','ج','د'][a])) + (okk ? '' : ' — الصواب: ' + ['أ','ب','ج','د'][q.a]) + '</div>' +
+      '<img src="' + q.img + '" style="width:100%;max-width:420px;border-radius:10px;border:1px solid var(--line);margin-top:6px" data-zoom="' + q.img + '">' +
+      '<div class="rr">صفحة ' + q.p + ' — سؤال ' + q.n + ' في كتاب نافس</div></div>';
+  }).join('') + '</div>';
+  $('#quizBox').innerHTML = html;
+  $('#quizBox').querySelectorAll('[data-wrong]').forEach(b => b.onclick = () => {
+    const items = state.figAll.filter(x => wrongIds.indexOf(x.i) > -1);
+    startFigs(sub, f, state.figChunk, items);
+  });
+  $('#quizBox').querySelectorAll('[data-again]').forEach(b => b.onclick = () => startFigs(sub, f, state.figChunk));
+  $('#quizBox').querySelectorAll('[data-cert]').forEach(b => b.onclick = () => showCert(f.title + ' — الرسوم', score, correct, total));
+  $('#quizBox').querySelectorAll('[data-back]').forEach(b => b.onclick = () => go('train'));
+  $('#quizBox').querySelectorAll('[data-zoom]').forEach(img => img.onclick = () => {
+    $('#modalBox').innerHTML = '<img src="' + img.dataset.zoom + '" style="width:100%;border-radius:12px">';
+    $('#modal').hidden = false;
+  });
+  renderHub();
+}
+
 /* ---------- مهام المؤشر ---------- */
 function startTasks(sub, f){
+  showQuiz();
   state.mode = 'tasks'; state.subject = sub; state.field = f;
   state.items = f.tasks.map((t, i) => Object.assign({}, t, { i }));
   state.idx = 0; state.taskSelf = {}; state.answers = {}; state.hints = {};
@@ -430,6 +575,200 @@ function finishTasks(){
   renderHub();
 }
 
+/* ---------- الخطط العلاجية ---------- */
+function fieldAttempts(sub, f, mode){
+  return attempts.filter(a => a.subject === sub && a.field === f.code && a.mode === (mode || 'mcq'));
+}
+function lastWrong(sub, f){
+  const at = fieldAttempts(sub, f, 'mcq');
+  for(let i = at.length - 1; i >= 0; i--){
+    if(at[i].wrong && at[i].wrong.length) return at[i].wrong;
+  }
+  return [];
+}
+function planTargets(f, wrong){
+  const set = {};
+  wrong.forEach(i => { const q = f.mcq[i]; if(q && q.k !== undefined) set[q.k] = 1; });
+  return Object.keys(set).map(k => f.ind[+k]).filter(Boolean);
+}
+function planDays(k){
+  const p = getProg(k);
+  if(!p.days) p.days = [false, false, false];
+  return p.days;
+}
+function togglePlanDay(k, i){
+  const p = getProg(k);
+  if(!p.days) p.days = [false, false, false];
+  p.days[i] = !p.days[i];
+  setProg(k, p);
+  renderProgress();
+  const trainVisible = document.getElementById('sec-train').classList.contains('show');
+  if(state.mode === 'plan' && trainVisible) showPlan(state.subject, state.field);
+}
+function planStatus(sub, f){
+  const at = fieldAttempts(sub, f, 'mcq');
+  const p = getProg(fieldKey(sub, f));
+  const best = p.mcq.best;
+  if(!at.length) return { label:'لم تبدأ', cls:'r', best:0 };
+  if(best >= 80) return { label:'متقنة', cls:'g', best };
+  if(best >= 60) return { label:'جيدة — تحتاج تثبيت', cls:'a', best };
+  return { label:'تحتاج خطة علاجية', cls:'r', best };
+}
+function planHTML(sub, f, compact){
+  const k = fieldKey(sub, f);
+  const p = getProg(k);
+  const wrong = lastWrong(sub, f);
+  const targets = planTargets(f, wrong);
+  const days = planDays(k);
+  const at = fieldAttempts(sub, f, 'mcq');
+  const last = at.length ? at[at.length - 1] : null;
+  const st = planStatus(sub, f);
+  let html = '<div class="plan-card">' +
+    '<div class="plan-head"><div><b>' + f.code + ' — ' + f.title + '</b><small>أفضل نتيجة: ' + p.mcq.best + '% • محاولات: ' + at.length + ' • ' + st.label + '</small></div>' +
+    '<span class="tag-s">' + (last ? 'آخر محاولة ' + last.score + '%' : 'لم تبدئي') + '</span></div>';
+
+  html += '<div class="plan-block"><b>🎯 المؤشرات المستهدفة</b>' +
+    (targets.length ? '<ul>' + targets.map(t => '<li>' + t + '</li>').join('') + '</ul>'
+      : '<p class="muted" style="margin:4px 0">' + (at.length ? 'أداؤك جيد في هذا المجال — راجعي المؤشرات التالية للتثبيت:' : 'لم تبدئي بعد. نبدأ بمراجعة مؤشرات المجال:') + '</p><ul>' + f.ind.slice(0, 3).map(t => '<li>' + t + '</li>').join('') + '</ul>') +
+    '</div>';
+
+  if(wrong.length){
+    html += '<div class="plan-block"><b>✍️ أسئلة أخطأتِ فيها</b><div class="wrongq">' +
+      wrong.slice(0, 10).map(i => '<span>' + (i + 1) + '</span>').join('') + '</div>' +
+      '<p class="muted" style="margin:6px 0 0">أعيدي حل هذه الأسئلة بعد قراءة الشرح، ثم أعيدي الاختبار كاملاً.</p></div>';
+  }
+
+  html += '<div class="plan-block"><b>🪜 خطوات الخطة</b><ol class="plan-steps">' +
+    '<li>اقرئي المؤشر وناتج التعلم للمجال بتمعن.</li>' +
+    '<li>راجعي شرح الإجابة لكل سؤال أخطأتِ فيه.</li>' +
+    '<li>حلّي «مهام المؤشر» الثلاث الأولى بصوت مسموع.</li>' +
+    '<li>أعيدي الاختبار واستهدفي نتيجة أعلى بـ 10 درجات.</li>' +
+    '<li>سجّلي إنجازك في لوحة ولي الأمر.</li></ol></div>';
+
+  html += '<div class="plan-block"><b>📅 متابعة ثلاثة أيام</b><div class="plan-days">' +
+    ['اليوم 1: مراجعة المؤشر + سؤالان', 'اليوم 2: مهمة مؤشر + أسئلة الرسوم', 'اليوم 3: إعادة الاختبار'].map((t, i) =>
+      '<label class="plan-day' + (days[i] ? ' done' : '') + '"><input type="checkbox" ' + (days[i] ? 'checked' : '') + ' data-day="' + i + '"><span>' + t + '</span></label>').join('') +
+    '</div></div>';
+
+  if(!compact){
+    html += '<div class="qfoot">' +
+      '<button class="btn btn-primary btn-sm" data-act="start">📝 ابدئي الاختبار</button>' +
+      (wrong.length ? '<button class="btn btn-soft btn-sm" data-act="wrong">🔄 الأسئلة الخاطئة</button>' : '') +
+      '<button class="btn btn-ghost btn-sm" data-act="print">🖨️ طباعة الخطة</button>' +
+      '<button class="btn btn-ghost btn-sm" data-act="back">رجوع</button></div>';
+  } else {
+    html += '<div class="qfoot">' +
+      '<button class="btn btn-soft btn-sm" data-act="open">📋 عرض الخطة كاملة</button>' +
+      '<button class="btn btn-primary btn-sm" data-act="start">📝 إعادة الاختبار</button></div>';
+  }
+  html += '</div>';
+  return html;
+}
+function bindPlan(container, sub, f){
+  const k = fieldKey(sub, f);
+  container.querySelectorAll('[data-day]').forEach(cb => cb.onchange = () => togglePlanDay(k, +cb.dataset.day));
+  container.querySelectorAll('[data-act]').forEach(b => b.onclick = () => {
+    const a = b.dataset.act;
+    if(a === 'start') startMCQ(sub, f);
+    else if(a === 'open') showPlan(sub, f);
+    else if(a === 'wrong'){
+      const w = lastWrong(sub, f);
+      if(w.length){ state.wrongIds = w; startMCQ(sub, f, true); } else toast('لا توجد أسئلة خاطئة محفوظة');
+    }
+    else if(a === 'print') printPlan(sub, f);
+    else go('progress');
+  });
+}
+function showPlan(sub, f){
+  state.mode = 'plan'; state.subject = sub; state.field = f;
+  go('train');
+  showQuiz();
+  $('#quizBox').innerHTML = '<div class="quiz-head"><div class="qh-top"><h3>📋 الخطة العلاجية — ' + f.title + '</h3>' +
+    '<span class="pill">' + f.code + '</span></div></div>' + planHTML(sub, f);
+  bindPlan($('#quizBox'), sub, f);
+  $('#quizBox').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+/* ---------- التقرير الشامل والطباعة ---------- */
+function buildReport(){
+  const name = profile.name || 'الطالبة', school = profile.school || 'لم تسجل المدرسة';
+  const mcq = attempts.filter(a => a.mode === 'mcq');
+  const totalQ = mcq.reduce((s, a) => s + a.total, 0);
+  const totalC = mcq.reduce((s, a) => s + a.correct, 0);
+  const avg = pct(totalC, totalQ);
+  const rows = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const k = fieldKey(sub, f), p = getProg(k);
+    const at = fieldAttempts(sub, f, 'mcq'), ft = fieldAttempts(sub, f, 'fig');
+    const figBest = ft.reduce((m, a) => Math.max(m, a.score), 0);
+    const figLatest = ft.length ? ft[ft.length - 1].score : 0;
+    const st = p.mcq.best >= 80 ? 'متقنة' : (p.mcq.best >= 60 ? 'جيدة' : (at.length ? 'تحتاج دعماً' : 'لم تبدأ'));
+    rows.push('<tr><td>' + f.code + '</td><td style="text-align:right">' + f.title + '</td><td>' + at.length + '</td><td><b>' + p.mcq.best + '%</b></td><td>' + (ft.length ? figLatest + '%' : '—') + '</td><td>' + ((p.tasks && p.tasks.done) || 0) + '/5</td><td>' + st + '</td></tr>');
+  }));
+
+  let html = '<div class="report">' +
+    '<div class="rep-head"><div><h1>تقرير التقدم الشامل</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
+    '<div class="rep-brand">إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>المدرسة:</b> ' + school + '</div>' +
+    '<div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div><div><b>سجل التدريب:</b> ' + attempts.length + ' مهمة</div></div>' +
+    '<div class="rep-kpis"><div><b>' + avg + '%</b><span>متوسط الدقة</span></div>' +
+    '<div><b>' + mcq.length + '</b><span>اختباراً منجزاً</span></div>' +
+    '<div><b>' + attempts.filter(a => a.score >= 60).length + '</b><span>شهادة</span></div>' +
+    '<div><b>' + streakDays() + '</b><span>يوم متتالٍ</span></div></div>' +
+    '<h2>أدائي في المجالات</h2>' +
+    '<table class="rep-table"><tr><th>المجال</th><th>العنوان</th><th>محاولات</th><th>أفضل نتيجة</th><th>الرسوم</th><th>المهام</th><th>الحالة</th></tr>' + rows.join('') + '</table>';
+
+  const weak = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const p = getProg(fieldKey(sub, f));
+    const at = fieldAttempts(sub, f, 'mcq');
+    if(at.length && p.mcq.best < 80) weak.push({ sub, f });
+  }));
+  html += '<h2>الخطط العلاجية</h2>';
+  if(!weak.length){
+    html += '<p class="rep-note">لا توجد خطط علاجية حالياً — جميع المجالات التي بدأتِها بمستوى جيد أو متقن. 🌟</p>';
+  } else {
+    weak.forEach(w => {
+      const wrong = lastWrong(w.sub, w.f);
+      const targets = planTargets(w.f, wrong);
+      html += '<div class="rep-plan"><h3>' + w.f.code + ' — ' + w.f.title + ' <small>(أفضل نتيجة ' + getProg(fieldKey(w.sub, w.f)).mcq.best + '%)</small></h3>' +
+        (targets.length ? '<p><b>المؤشرات المستهدفة:</b></p><ul>' + targets.map(t => '<li>' + t + '</li>').join('') + '</ul>' : '') +
+        (wrong.length ? '<p><b>أسئلة للمراجعة:</b> ' + wrong.map(i => (i + 1)).join('، ') + '</p>' : '') +
+        '<p><b>خطة العمل:</b> مراجعة المؤشر ← إعادة الأسئلة الخاطئة ← مهمة مؤشر ← إعادة الاختبار بهدف +10 درجات.</p></div>';
+    });
+  }
+
+  html += '<h2>سجل المحاولات (آخر 25)</h2>';
+  const at25 = attempts.slice(-25).reverse();
+  html += at25.length ? '<table class="rep-table"><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th><th>الوقت</th></tr>' +
+    at25.map(a => '<tr><td style="text-align:right">' + a.title + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td><td>' + (a.time || '') + '</td></tr>').join('') + '</table>'
+    : '<p class="rep-note">لا توجد محاولات مسجلة بعد.</p>';
+
+  html += '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div>' +
+    '<p class="rep-foot">هذا التقرير صادر من منصة «تدريب نافس علوم» — إعداد المعلمة نعمة هرشان.</p></div>';
+  return html;
+}
+function doPrint(){
+  $('#printArea').innerHTML = buildReport();
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
+}
+function printPlan(sub, f){
+  const name = profile.name || 'الطالبة';
+  $('#printArea').innerHTML = '<div class="report"><div class="rep-head"><div><h1>خطة علاجية</h1><p>' + f.code + ' — ' + f.title + '</p></div>' +
+    '<div class="rep-brand">إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div></div>' +
+    planHTML(sub, f, true) + '</div>';
+  const root = $('#printArea');
+  root.querySelectorAll('.qfoot').forEach(x => x.remove());
+  root.querySelectorAll('input[type="checkbox"]').forEach(inp => {
+    inp.replaceWith(document.createTextNode(inp.checked ? '☑ ' : '☐ '));
+  });
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('printing'));
+
 /* ---------- الشهادة ---------- */
 function showCert(title, score, correct, total){
   const name = profile.name || 'الطالبة';
@@ -478,8 +817,21 @@ function renderProgress(){
     : '<div class="empty">لا توجد شهادات بعد — أتمّي اختبارا واحصلي على 60%.</div>';
 
   $('#attemptsList').innerHTML = attempts.length ? '<table><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th></tr>' +
-    attempts.slice().reverse().slice(0, 20).map(a => '<tr><td>' + a.title + '</td><td>' + (a.mode === 'mcq' ? 'اختيار' : 'مؤشر') + '</td><td><b>' + a.score + '%</b></td><td>' + a.date + '</td></tr>').join('') + '</table>'
+    attempts.slice().reverse().slice(0, 20).map(a => '<tr><td>' + a.title + '</td><td>' + (a.mode === 'mcq' ? 'اختيار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td><b>' + a.score + '%</b></td><td>' + a.date + '</td></tr>').join('') + '</table>'
     : '<div class="empty">لا توجد محاولات بعد.</div>';
+
+  const planHost = $('#planArea');
+  if(planHost){
+    const weak = [];
+    Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+      const at = fieldAttempts(sub, f, 'mcq');
+      const pp = getProg(fieldKey(sub, f));
+      if(at.length && pp.mcq.best < 80) weak.push({ sub, f });
+    }));
+    planHost.innerHTML = weak.length ? weak.map(w => planHTML(w.sub, w.f, true)).join('')
+      : '<div class="empty">لا توجد خطط علاجية حالياً — كل المجالات التي بدأتِها بمستوى جيد أو متقن. استمري في التدريب 🌟</div>';
+    planHost.querySelectorAll('.plan-card').forEach((card, i) => bindPlan(card, weak[i].sub, weak[i].f));
+  }
 }
 
 /* ---------- ولي الأمر ---------- */
@@ -540,7 +892,8 @@ $('#sendMsgBtn').onclick = () => {
   $('#parentMsgStatus').innerHTML = '<div class="notice">✅ أُرسلت الرسالة وستظهر لابنتك في الصفحة الرئيسية.</div>';
   renderHub();
 };
-$('#printReport').onclick = () => window.print();
+$('#printReport').onclick = () => doPrint();
+$('#repBtn').onclick = () => doPrint();
 $('#changePin').onclick = () => {
   const v = prompt('اكتبي الرمز الجديد (4 أرقام):');
   if(v && v.length >= 4){ pin = v; s(K.pin, pin); toast('تم تغيير الرمز ✅'); }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -152,7 +152,11 @@
   <div class="wrap">
     <div class="sec-head">
       <h2><svg><use href="#i-chart"/></svg> إنجازي</h2>
-      <p>تابع تقدّمك في كل مجال، وشهاداتك، وسجل محاولاتك.</p>
+      <p>تابع تقدّمك في كل مجال، وخطتك العلاجية، وسجل محاولاتك.</p>
+    </div>
+    <div class="toolbar-row">
+      <button class="btn btn-primary" id="repBtn"><svg><use href="#i-print"/></svg> تقرير شامل للطباعة / PDF</button>
+      <span class="muted">يضم كل نتائجك ومحاولاتك وخطتك العلاجية — احفظيه PDF من نافذة الطباعة.</span>
     </div>
     <div class="grid-3" id="progCards"></div>
     <div class="card">
@@ -168,6 +172,11 @@
         <h3><svg><use href="#i-clock"/></svg> سجل المحاولات</h3>
         <div id="attemptsList"></div>
       </div>
+    </div>
+    <div class="card" id="plansCard">
+      <h3><svg><use href="#i-target"/></svg> خططي العلاجية</h3>
+      <p class="muted">تُبنى تلقائياً من الأسئلة التي أخطأتِ فيها: مؤشرات مستهدفة، وخطوات، ومتابعة ثلاثة أيام.</p>
+      <div id="planArea"></div>
     </div>
   </div>
 </section>
@@ -265,13 +274,15 @@
 <div class="toast" id="toast"></div>
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
-<script src="data-f11.js"></script>
-<script src="data-f12.js"></script>
-<script src="data-f13.js"></script>
-<script src="data-f14.js"></script>
-<script src="data-e31.js"></script>
-<script src="data-e32.js"></script>
-<script src="data-e33.js"></script>
-<script src="app.js"></script>
+<div id="printArea" aria-hidden="true"></div>
+<script src="data-f11.js?v=8"></script>
+<script src="data-f12.js?v=8"></script>
+<script src="data-f13.js?v=8"></script>
+<script src="data-f14.js?v=8"></script>
+<script src="data-e31.js?v=8"></script>
+<script src="data-e32.js?v=8"></script>
+<script src="data-e33.js?v=8"></script>
+<script src="data-figs.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
