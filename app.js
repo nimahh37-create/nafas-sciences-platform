@@ -609,10 +609,11 @@ function planStatus(sub, f){
   const at = fieldAttempts(sub, f, 'mcq');
   const p = getProg(fieldKey(sub, f));
   const best = p.mcq.best;
-  if(!at.length) return { label:'لم تبدأ', cls:'r', best:0 };
-  if(best >= 80) return { label:'متقنة', cls:'g', best };
-  if(best >= 60) return { label:'جيدة — تحتاج تثبيت', cls:'a', best };
-  return { label:'تحتاج خطة علاجية', cls:'r', best };
+  if(!at.length) return { label:'لم تبدأ', cls:'r', best:0, last:0 };
+  const last = at[at.length - 1].score;
+  if(last >= 80) return { label:'متقنة في آخر محاولة', cls:'g', best, last };
+  if(last >= 60) return { label:'جيدة — تحتاج تثبيت', cls:'a', best, last };
+  return { label:'تحتاج خطة علاجية', cls:'r', best, last };
 }
 function planHTML(sub, f, compact){
   const k = fieldKey(sub, f);
@@ -702,7 +703,8 @@ function buildReport(){
     const at = fieldAttempts(sub, f, 'mcq'), ft = fieldAttempts(sub, f, 'fig');
     const figBest = ft.reduce((m, a) => Math.max(m, a.score), 0);
     const figLatest = ft.length ? ft[ft.length - 1].score : 0;
-    const st = p.mcq.best >= 80 ? 'متقنة' : (p.mcq.best >= 60 ? 'جيدة' : (at.length ? 'تحتاج دعماً' : 'لم تبدأ'));
+    const ls = at.length ? at[at.length - 1].score : 0;
+    const st = !at.length ? 'لم تبدأ' : (ls >= 80 ? 'متقنة' : (ls >= 60 ? 'جيدة' : 'تحتاج دعماً'));
     rows.push('<tr><td>' + f.code + '</td><td style="text-align:right">' + f.title + '</td><td>' + at.length + '</td><td><b>' + p.mcq.best + '%</b></td><td>' + (ft.length ? figLatest + '%' : '—') + '</td><td>' + ((p.tasks && p.tasks.done) || 0) + '/5</td><td>' + st + '</td></tr>');
   }));
 
@@ -722,7 +724,8 @@ function buildReport(){
   Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
     const p = getProg(fieldKey(sub, f));
     const at = fieldAttempts(sub, f, 'mcq');
-    if(at.length && p.mcq.best < 80) weak.push({ sub, f });
+    const ls = at.length ? at[at.length - 1].score : 0;
+    if(at.length && ls < 80) weak.push({ sub, f });
   }));
   html += '<h2>الخطط العلاجية</h2>';
   if(!weak.length){
@@ -826,7 +829,8 @@ function renderProgress(){
     Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
       const at = fieldAttempts(sub, f, 'mcq');
       const pp = getProg(fieldKey(sub, f));
-      if(at.length && pp.mcq.best < 80) weak.push({ sub, f });
+      const ls = at.length ? at[at.length - 1].score : 0;
+      if(at.length && ls < 80) weak.push({ sub, f });
     }));
     planHost.innerHTML = weak.length ? weak.map(w => planHTML(w.sub, w.f, true)).join('')
       : '<div class="empty">لا توجد خطط علاجية حالياً — كل المجالات التي بدأتِها بمستوى جيد أو متقن. استمري في التدريب 🌟</div>';
