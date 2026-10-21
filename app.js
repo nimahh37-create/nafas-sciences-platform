@@ -708,7 +708,7 @@ function buildReport(){
 
   let html = '<div class="report">' +
     '<div class="rep-head"><div><h1>تقرير التقدم الشامل</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
-    '<div class="rep-brand">إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-brand">إدارة تعليم مكة<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
     '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>المدرسة:</b> ' + school + '</div>' +
     '<div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div><div><b>سجل التدريب:</b> ' + attempts.length + ' مهمة</div></div>' +
     '<div class="rep-kpis"><div><b>' + avg + '%</b><span>متوسط الدقة</span></div>' +
@@ -756,7 +756,7 @@ function doPrint(){
 function printPlan(sub, f){
   const name = profile.name || 'الطالبة';
   $('#printArea').innerHTML = '<div class="report"><div class="rep-head"><div><h1>خطة علاجية</h1><p>' + f.code + ' — ' + f.title + '</p></div>' +
-    '<div class="rep-brand">إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-brand">إدارة تعليم مكة<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
     '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div></div>' +
     planHTML(sub, f, true) + '</div>';
   const root = $('#printArea');
@@ -776,7 +776,7 @@ function showCert(title, score, correct, total){
   const box = $('#modalBox');
   box.innerHTML = '<div class="cert"><div class="seal">🏅</div>' +
     '<p style="font-weight:800;color:var(--violet)">تدريب نافس علوم</p>' +
-    '<p class="muted">إعداد المعلمة: نعمة هرشان</p>' +
+    '<p class="muted">إدارة تعليم مكة · إعداد المعلمة: نعمة هرشان</p>' +
     '<h2>شهادة إنجاز</h2>' +
     '<p>تشهد منصة تدريب نافس علوم بأن</p>' +
     '<div class="cname">' + name + '</div>' +
