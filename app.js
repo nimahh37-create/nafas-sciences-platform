@@ -50,6 +50,7 @@ function logLogin(){
   const d = today();
   st.logins[d] = (st.logins[d] || 0) + 1;
   saveRegistry(reg);
+  syncPushSoon();
 }
 function migrateLegacy(){
   const legacyMap = { nafas_profile:'profile', nafas_progress:'progress', nafas_attempts:'attempts', nafas_msg:'msg', nafas_goal:'goal' };
@@ -103,6 +104,7 @@ function activateUser(id){
   logLogin();
   $('#loginGate').hidden = true;
   renderAll();
+  syncPushSoon();
   const un = unreadFor(U.id);
   toast(un ? 'أهلًا ' + (profile.name || '') + ' 👋 — لديك ' + un + ' رسالة من معلمة 📩' : 'أهلًا ' + (profile.name || '') + ' 👋');
 }
@@ -450,6 +452,7 @@ function finishMCQ(){
     xp: correct * 10 + (score >= 80 ? 20 : 0)
   });
   s(K.attempts, attempts);
+  syncPushSoon();
 
   const msg = score >= 90 ? 'ممتاز 🌟 نتيجة رائعة، أنتِ جاهزة للاختبار الحقيقي.'
             : score >= 75 ? 'رائع جدا 👏 استمري على هذا المنوال!'
@@ -581,6 +584,7 @@ function finishFigs(){
     score, correct, total, answered:Object.keys(state.answers).length, hints:0, retry:!!state.onlyWrong,
     wrong:wrongIds, date:today(), time:new Date().toLocaleTimeString('ar-SA'), xp: correct * 10 });
   s(K.attempts, attempts);
+  syncPushSoon();
   let html = '<div class="result"><h2>' + (score >= 60 ? '🎉 أحسنتِ في أسئلة الرسوم!' : '📘 راجعي الأشكال معاً') + '</h2>' +
     '<div class="big">' + score + '%</div>' +
     '<p>الإجابات الصحيحة: <b>' + correct + '</b> من ' + total + ' • المحاولة رقم ' + p.fig.attempts + ' • أفضل نتيجة ' + p.fig.best + '%</p>' +
@@ -680,6 +684,7 @@ function finishTasks(){
   setProg(k, p);
   attempts.push({ mode:'tasks', subject:sub, field:f.code, title:f.title + ' (مهام مؤشر)', score, correct:ok, total, answered:ok + part + no, hints:0, retry:false, date:today(), time:new Date().toLocaleTimeString('ar-SA'), xp: ok * 15 });
   s(K.attempts, attempts);
+  syncPushSoon();
   const html = '<div class="result"><h2>' + (score >= 60 ? '🎉 أداء رائع في مهام المؤشر' : '📘 خلينا نراجع معاً') + '</h2>' +
     '<div class="big">' + score + '%</div>' +
     '<p>مهام أتقنتِها: <b>' + ok + '</b> • جزئية: ' + part + ' • تحتاج مراجعة: ' + no + '</p>' +
@@ -1348,6 +1353,10 @@ function renderTeacher(){
   }
   const from = rng.from, to = rng.to;
   const A = buildAnalysis(from, to);
+  const ss = $('#syncStatus');
+  if(ss) ss.textContent = syncStatusText();
+  const sci = $('#syncCodeInput');
+  if(sci && !sci.value) sci.value = syncCode();
   const T = A.totals;
   $('#tpRangeTxt').textContent = 'الفترة: ' + from + ' — ' + to;
 
@@ -1602,12 +1611,13 @@ function teacherLogin(){
     $('#teacherBody').hidden = false;
     initTeacherDates();
     renderTeacher();
+    syncPull().then(() => { if(!$('#teacherPanel').hidden) renderTeacher(); });
     toast('أهلاً بكِ أستاذة 👩‍🏫');
   } else toast('الرمز غير صحيح ❌');
 }
 function openTeacher(){
   $('#teacherPanel').hidden = false;
-  if(teacherAuthed){ $('#teacherGate').hidden = true; $('#teacherBody').hidden = false; initTeacherDates(); renderTeacher(); }
+  if(teacherAuthed){ $('#teacherGate').hidden = true; $('#teacherBody').hidden = false; initTeacherDates(); renderTeacher(); syncPull().then(() => renderTeacher()); }
   else { $('#teacherGate').hidden = false; $('#teacherBody').hidden = true; $('#teacherPin').value = ''; }
 }
 function initTeacherDates(){
@@ -1893,6 +1903,180 @@ function exportStudentData(){
   document.body.appendChild(a); a.click(); a.remove();
   toast('تم تصدير بياناتك — أرسلي الملف لمعلمتك 📤');
 }
+/* ---------- المزامنة السحابية: ظهور نتائج الطالبات مباشرة عند المعلمة ---------- */
+const SYNC_DEFAULT_CODE = 'nafas-jizan-2026';
+const SYNC = { last: 0, pulling: false };
+function syncCode(){ return (gRaw('nafas_sync_code', '') || SYNC_DEFAULT_CODE); }
+function saveSyncCode(c){ sRaw('nafas_sync_code', c || SYNC_DEFAULT_CODE); }
+function syncEnabled(){ return gRaw('nafas_sync_on', true) !== false; }
+function setSyncEnabled(v){ sRaw('nafas_sync_on', !!v); }
+function syncTopic(){ return syncCode(); }
+function syncUrl(q){ return 'https://ntfy.sh/' + encodeURIComponent(syncTopic()) + (q || ''); }
+(function(){
+  const m = /[?&]code=([^&#]+)/.exec(location.search);
+  if(m) saveSyncCode(decodeURIComponent(m[1]));
+})();
+function studentCompact(){
+  const st = getRegistry().find(x => x.id === U.id);
+  if(!st) return null;
+  const raw = readUser(U.id, 'attempts', []);
+  const att = raw.map(a => ({ mode:a.mode, subject:a.subject, field:a.field, title:a.title, score:a.score,
+    correct:a.correct, total:a.total, answered:a.answered || 0, hints:a.hints || 0, retry:!!a.retry,
+    wrong:(a.wrong || []).slice(0, 12), date:a.date, time:a.time || '' }));
+  const prog = {};
+  const pr = readUser(U.id, 'progress', {});
+  Object.keys(pr).forEach(k => { const p = pr[k] || {};
+    prog[k] = { b:(p.mcq && p.mcq.best) || 0, a:(p.mcq && p.mcq.attempts) || 0, c:(p.mcq && p.mcq.correct) || 0,
+                t:(p.tasks && p.tasks.done) || 0, fb:(p.fig && p.fig.best) || 0, fa:(p.fig && p.fig.attempts) || 0 }; });
+  const logins = {};
+  Object.keys(st.logins || {}).sort().slice(-60).forEach(d => { logins[d] = st.logins[d]; });
+  return { id:st.id, name:st.name, school:st.school, cls:st.cls || '', track:st.track || '',
+    firstSeen:st.firstSeen, lastSeen:st.lastSeen, sessions:st.sessions || 0, logins:logins,
+    profile:readUser(U.id, 'profile', {}), progress:prog, n:att.length };
+}
+function postMsg(body, title){
+  try{
+    fetch(syncUrl(''), { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8', 'Title':title }, body:body })
+      .catch(() => {});
+  }catch(e){}
+}
+let syncPushTimer = null;
+function syncPush(){
+  if(!syncEnabled()) return;
+  const rec = studentCompact();
+  if(!rec) return;
+  const att = readUser(U.id, 'attempts', []).map(a => ({ mode:a.mode, subject:a.subject, field:a.field, title:a.title,
+    score:a.score, correct:a.correct, total:a.total, answered:a.answered || 0, hints:a.hints || 0, retry:!!a.retry,
+    wrong:(a.wrong || []).slice(0, 12), date:a.date, time:a.time || '' }));
+  const CH = 8, parts = [];
+  for(let i = 0; i < att.length; i += CH) parts.push(att.slice(i, i + CH));
+  rec.n = att.length; rec.parts = parts.length;
+  const head = JSON.stringify({ t:'rec', rec });
+  if(head.length > 3600){
+    rec.logins = {}; rec.progress = {};
+    const h2 = JSON.stringify({ t:'rec', rec });
+    postMsg(h2.length > 3600 ? JSON.stringify({ t:'rec', rec:{ id:rec.id, name:rec.name, school:rec.school, cls:rec.cls, track:rec.track, firstSeen:rec.firstSeen, lastSeen:rec.lastSeen, sessions:rec.sessions, n:rec.n, parts:rec.parts } }) : h2, 'nafas-rec');
+  } else {
+    postMsg(head, 'nafas-rec');
+  }
+  parts.forEach((items, i) => postMsg(JSON.stringify({ t:'att', id:rec.id, part:i, items }), 'nafas-att'));
+  SYNC.last = Date.now();
+  sRaw('nafas_sync_last', SYNC.last);
+}
+function syncPushSoon(){
+  if(syncPushTimer) clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(() => { syncPushTimer = null; syncPush(); }, 900);
+}
+function materializeSync(id){
+  const cache = gRaw('nafas_sync_cache', {});
+  const c = cache[id];
+  if(!c || !c.rec) return false;
+  const rec = c.rec;
+  const reg = getRegistry();
+  let st = reg.find(x => x.id === id);
+  if(!st){
+    st = { id, name:rec.name || 'طالبة', school:rec.school || '', cls:rec.cls || '',
+           firstSeen:rec.firstSeen || Date.now(), lastSeen:rec.lastSeen || Date.now(), sessions:0, logins:{} };
+    reg.push(st);
+  }
+  if(rec.name) st.name = rec.name;
+  if(rec.school) st.school = rec.school;
+  if(rec.cls) st.cls = rec.cls;
+  if(rec.track) st.track = rec.track;
+  st.firstSeen = Math.min(st.firstSeen || Date.now(), rec.firstSeen || Date.now());
+  st.lastSeen = Math.max(st.lastSeen || 0, rec.lastSeen || 0);
+  st.sessions = Math.max(st.sessions || 0, rec.sessions || 0);
+  st.logins = st.logins || {};
+  Object.keys(rec.logins || {}).forEach(d => { st.logins[d] = Math.max(st.logins[d] || 0, rec.logins[d]); });
+  saveRegistry(reg);
+  if(id !== U.id){
+    const parts = c.parts || {};
+    const atts = [];
+    Object.keys(parts).map(Number).sort((a, b) => a - b).forEach(i => (parts[i] || []).forEach(a => atts.push(a)));
+    if(atts.length) writeUser(id, 'attempts', atts);
+    if(rec.progress && Object.keys(rec.progress).length){
+      const prog = {};
+      Object.keys(rec.progress).forEach(k => { const p = rec.progress[k];
+        prog[k] = { mcq:{ best:p.b || 0, attempts:p.a || 0, correct:p.c || 0 }, tasks:{ done:p.t || 0 },
+                    fig:{ best:p.fb || 0, attempts:p.fa || 0 }, last:0 }; });
+      writeUser(id, 'progress', prog);
+    }
+    if(rec.profile) writeUser(id, 'profile', rec.profile);
+  }
+  return true;
+}
+function syncPull(){
+  if(!syncEnabled() || SYNC.pulling) return Promise.resolve(0);
+  SYNC.pulling = true;
+  const since = Math.floor((gRaw('nafas_sync_since', 0) || (Date.now() - 36 * 3600 * 1000)) / 1000);
+  return fetch(syncUrl('/json?poll=1&since=' + since), { headers:{ 'Accept':'application/json' } })
+    .then(r => r.text())
+    .then(txt => {
+      const lines = String(txt || '').split('\n').filter(Boolean);
+      const cache = gRaw('nafas_sync_cache', {});
+      let changed = false;
+      lines.forEach(line => {
+        let m; try { m = JSON.parse(line); } catch(e){ return; }
+        if(!m || m.event !== 'message' || !m.message) return;
+        let p; try { p = JSON.parse(m.message); } catch(e){ return; }
+        if(p.t === 'rec' && p.rec && p.rec.id){
+          if(!cache[p.rec.id]) cache[p.rec.id] = { rec:null, parts:{} };
+          cache[p.rec.id].rec = p.rec;
+          changed = true;
+        } else if(p.t === 'att' && p.id){
+          if(!cache[p.id]) cache[p.id] = { rec:null, parts:{} };
+          cache[p.id].parts = cache[p.id].parts || {};
+          cache[p.id].parts[p.part] = p.items;
+          changed = true;
+        }
+      });
+      if(changed) sRaw('nafas_sync_cache', cache);
+      Object.keys(cache).forEach(materializeSync);
+      sRaw('nafas_sync_since', Date.now());
+      SYNC.last = Date.now();
+      sRaw('nafas_sync_last', SYNC.last);
+      return changed ? lines.length : 0;
+    })
+    .catch(() => 0)
+    .then(v => { SYNC.pulling = false; return v; });
+}
+function syncStatusText(){
+  const on = syncEnabled();
+  const last = gRaw('nafas_sync_last', 0);
+  const t = last ? new Date(last).toLocaleTimeString('ar-SA') : '—';
+  return (on ? '✅ المزامنة مفعّلة' : '⛔ المزامنة متوقفة') + ' • رمز الصف: ' + syncCode() + ' • آخر تحديث: ' + t;
+}
+function startSyncLoop(){
+  if(syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if($('#teacherPanel') && !$('#teacherPanel').hidden){
+      syncPull().then(() => { if(typeof renderTeacher === 'function') renderTeacher(); });
+    }
+  }, 9000);
+}
+let syncTimer = null;
+on('#syncNow', () => { syncPull().then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تم تحديث النتائج من الطالبات ✅' : 'لا جديد الآن'); }); });
+on('#syncToggle', () => { setSyncEnabled(!syncEnabled()); renderTeacher(); toast(syncEnabled() ? 'تم تفعيل المزامنة ✅' : 'تم إيقاف المزامنة'); });
+on('#syncCopy', () => {
+  const link = location.origin + location.pathname + '?code=' + encodeURIComponent(syncCode());
+  const ta = document.createElement('textarea');
+  ta.value = link; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('تم نسخ رابط الصف 📋 — أرسليه للطالبات'); }
+  catch(e){ prompt('انسخي الرابط وأرسليه للطالبات:', link); }
+  ta.remove();
+});
+on('#syncStopMine', () => { setSyncEnabled(!syncEnabled()); renderHub(); toast(syncEnabled() ? 'تم إرسال تقدمك للمعلمة ✅' : 'تم إيقاف الإرسال للمعلمة'); });
+on('#syncSaveCode', () => {
+  const v = ($('#syncCodeInput') ? $('#syncCodeInput').value : '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+  if(!v){ toast('اكتبي رمز صف صحيحاً'); return; }
+  saveSyncCode(v);
+  sRaw('nafas_sync_since', 0);
+  if($('#syncCodeInput')) $('#syncCodeInput').value = v;
+  renderTeacher();
+  toast('تم حفظ رمز الصف: ' + v + ' ✅ — أرسلي الرابط الجديد للطالبات');
+});
+
+
 /* ---------- الوضع الليلي ---------- */
 $('#themeBtn').onclick = () => {
   document.body.classList.toggle('dark');
@@ -1916,4 +2100,6 @@ if(U.id && !studentExists(U.id)){ U.id = ''; localStorage.removeItem('nafas_acti
 if(U.id) logLogin();
 renderAll();
 initWeekInputs();
+startSyncLoop();
+syncPushSoon();
 if(!U.id) renderLoginGate();

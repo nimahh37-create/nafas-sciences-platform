@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
 
@@ -166,6 +166,22 @@
         <label class="wk-range" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="tpAllTime"> كل الفترات</label>
         <span class="muted" id="tpRangeTxt"></span>
       </div>
+      <div class="card" id="syncCard">
+        <h3><svg><use href="#i-refresh"/></svg> المزامنة السحابية — عرض مباشر لنتائج الطالبات</h3>
+        <p class="muted">عند تفعيلها، تُرسَل نتائج الطالبات ودخولهن تلقائياً إلى هذه الصفحة لحظة بلحظة، حتى لو تدرّبن على أجهزة مختلفة. تُحدَّث الصفحة تلقائياً كل ٩ ثوانٍ.</p>
+        <p id="syncStatus" class="muted">…</p>
+        <div class="toolbar-row">
+          <button class="btn btn-primary btn-sm" id="syncNow"><svg><use href="#i-refresh"/></svg> تحديث الآن</button>
+          <button class="btn btn-soft btn-sm" id="syncCopy">📋 نسخ رابط الصف للطالبات</button>
+          <button class="btn btn-ghost btn-sm" id="syncToggle">إيقاف/تشغيل المزامنة</button>
+        </div>
+        <div class="toolbar-row">
+          <label class="wk-range">رمز الصف <input type="text" id="syncCodeInput" placeholder="مثال: nafas-jizan-2026" style="padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-family:inherit"></label>
+          <button class="btn btn-ghost btn-sm" id="syncSaveCode">حفظ الرمز</button>
+          <span class="muted" style="font-size:12.5px">غيّري الرمز لصف خاص (يصبح البيانات خاصة بصفك فقط) ثم أرسلي الرابط الجديد للطالبات.</span>
+        </div>
+        <p class="muted" style="font-size:12.5px">طريقة الاستخدام: أرسلي «رابط الصف» للطالبات (أو أضيفي <b>?code=رمز</b> إلى الرابط). أي طالبة تفتح الرابط تُسجَّل بياناتها تلقائياً في صفك دون أن تشاهدي جهازها.</p>
+      </div>
       <div class="notice" id="tpNotice">
         ℹ️ <b>ملاحظة مهمة:</b> سجلات الطالبات تُحفظ في <b>الجهاز الذي درّبت عليه</b> فقط. إذا كانت الطالبات يتدرّبن على أجهزة أخرى، اطلبي منهن ضغط «⬇ تصدير بياناتي للمعلمة» في صفحة «بياناتي في المنصة»، ثم استوردي الملف هنا بزر «⬆ استيراد». وفعّلي «كل الفترات» لرؤية كل إنجازاتهن.
       </div>
@@ -245,6 +261,7 @@
         <input id="pSchool" placeholder="اسم المدرسة" style="flex:1;min-width:190px">
         <button class="btn btn-primary" onclick="saveProfile()">حفظ</button>
         <button class="btn btn-ghost" id="exportMine" title="أرسلي ملف بياناتك للمعلمة">⬇ تصدير بياناتي للمعلمة</button>
+        <button class="btn btn-ghost" id="syncStopMine" title="إرسال تقدمي لمعلمتي">📤 إيقاف/تشغيل الإرسال للمعلمة</button>
       </div>
     </div>
 
@@ -439,14 +456,14 @@
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
 <div id="printArea" aria-hidden="true"></div>
-<script src="data-f11.js?v=16"></script>
-<script src="data-f12.js?v=16"></script>
-<script src="data-f13.js?v=16"></script>
-<script src="data-f14.js?v=16"></script>
-<script src="data-e31.js?v=16"></script>
-<script src="data-e32.js?v=16"></script>
-<script src="data-e33.js?v=16"></script>
-<script src="data-figs.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="data-f11.js?v=18"></script>
+<script src="data-f12.js?v=18"></script>
+<script src="data-f13.js?v=18"></script>
+<script src="data-f14.js?v=18"></script>
+<script src="data-e31.js?v=18"></script>
+<script src="data-e32.js?v=18"></script>
+<script src="data-e33.js?v=18"></script>
+<script src="data-figs.js?v=18"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
