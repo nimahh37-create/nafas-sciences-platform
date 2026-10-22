@@ -132,6 +132,7 @@ function switchUser(){
 function renderAll(){
   renderProfile(); renderHub(); renderTrain(); renderProgress(); renderUploaded();
   renderInbox(); renderBell();
+  watchInboxRead();
   const an = $('#activeName'); if(an) an.textContent = profile.name || 'الطالبة';
 }
 
@@ -172,6 +173,7 @@ function go(id){
   window.scrollTo({ top:0, behavior:'smooth' });
   $('#mainNav').classList.remove('open');
   if(id === 'hub') renderHub();
+  if(typeof checkInboxVisible === 'function') setTimeout(checkInboxVisible, 400);
   if(id === 'train') renderTrain();
   if(id === 'progress') renderProgress();
 }
@@ -990,6 +992,8 @@ function renderProgress(){
     mth.innerHTML = dm.length ? dm.map(x => '<div class="medal-card today"><div class="mc-i">' + x.i + '</div><b>' + x.n + '</b><small>' + x.d + '</small></div>').join('')
       : '<div class="empty">لم تحصد وسام اليوم بعد — ابدئي باختبار لتحصد أول وسام 🌅</div>';
   }
+  const mhist = $('#medalHistory');
+  if(mhist) mhist.innerHTML = medalHistoryHTML(U.id, 14);
 
   const planHost = $('#planArea');
   if(planHost){
@@ -1525,13 +1529,16 @@ function renderStudentDetail(id, A){
     '<div class="kpi"><b>' + (w.mcqCount ? w.accuracy + '%' : '—') + '</b><small>دقة الفترة</small></div>' +
     '<div class="kpi"><b>' + (w.best ? w.best + '%' : '—') + '</b><small>أفضل نتيجة</small></div>' +
     '<div class="kpi"><b>' + w.sessions + '</b><small>جلسات الدخول</small></div></div>' +
+    '<div class="medals-row" style="margin:10px 0;align-items:center">' + medalIcons(dailyMedalsFor(st.id)) + '<span class="muted">أوسمة اليوم</span>' +
+    '<span style="width:14px"></span>' + medalIcons(medalsFor(st.id)) + '<span class="muted">أوسمة الإنجاز التراكمية</span></div>' +
     '<div class="tp-table"><table><tr><th>المجال</th><th>المحاولات</th><th>أفضل نتيجة</th><th>آخر نتيجة</th><th>الرسوم</th><th>المهام</th><th>الحالة</th></tr>' +
     fRows.map(f => '<tr><td>' + f.code + ' — ' + esc(f.title) + '</td><td>' + f.n + '</td><td>' + (f.best ? f.best + '%' : '—') + '</td>' +
       '<td>' + (f.last === null ? '—' : f.last + '%') + '</td><td>' + (f.figs ? f.figs + '%' : '—') + '</td>' +
       '<td>' + f.tasks + '/5</td><td>' + f.st + '</td></tr>').join('') + '</table></div>' +
     '<p class="muted" style="margin-top:10px">' + (weak.length ? 'مجالات تحتاج دعماً: ' + weak.map(f => f.code + ' (' + f.last + '%)').join('، ') : 'لا توجد مجالات تحتاج دعماً 🌟') + '</p>' +
     '<h3 style="margin-top:14px">آخر المحاولات</h3><div class="tp-table"><table><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th></tr>' +
-    (all.slice(-8).reverse().map(a => '<tr><td>' + esc(a.title) + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') || '<tr><td colspan="4">لا توجد محاولات</td></tr>') + '</table></div>';
+    (all.slice(-8).reverse().map(a => '<tr><td>' + esc(a.title) + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') || '<tr><td colspan="4">لا توجد محاولات</td></tr>') + '</table></div>' +
+    '<h3 style="margin-top:14px">📅 سجل الأوسمة اليومية — محفوظ ولا يُحذف</h3>' + medalHistoryHTML(st.id, 14);
   const pb = $('#tpPrintOne');
   if(pb) pb.onclick = () => printStudentReport(st.id);
 }
@@ -1967,6 +1974,7 @@ function sendPlanToAll(type){
   });
   savePlans(list);
   saveRegistry(reg);
+  list.slice(-reg.length).forEach((p, i) => setTimeout(() => { if(typeof syncPushPlan === 'function') syncPushPlan(p); }, (i + 1) * 2600));
   renderTeacher(); renderSent();
   toast('تم إرسال الخطة إلى ' + reg.length + ' طالبة ✅');
 }
@@ -1981,14 +1989,50 @@ function improvementPlanText(){
   text += '\nمعلمة: نعمة هرشان';
   return text;
 }
+function syncPushRead(ids){
+  if(!syncEnabled() || !ids || !ids.length) return;
+  const st = getRegistry().find(x => x.id === U.id);
+  postMsg(JSON.stringify({ t:'read', id:U.id, name:(st && st.name) || profile.name || '', ids: ids.slice(0, 25) }), 'read');
+}
 function markPlanRead(id){
   const l = getPlans();
   const p = l.find(x => x.id === id);
-  if(p){ p.read = true; savePlans(l); }
+  if(p){ p.read = true; p.readAt = Date.now(); savePlans(l); syncPushRead([id]); }
+}
+let inboxVisible = false, inboxT = null;
+function markAllInboxRead(silent){
+  const l = getPlans();
+  const ids = [];
+  l.forEach(p => { if((p.sid === U.id || (profile.name && p.name === profile.name)) && !p.read){ p.read = true; p.readAt = Date.now(); ids.push(p.id); } });
+  if(ids.length){ savePlans(l); syncPushRead(ids); renderBell(); }
+  if(!silent && ids.length) renderInbox();
+  return ids;
+}
+function checkInboxVisible(){
+  const card = $('#inboxCard');
+  if(!card) return;
+  const r = card.getBoundingClientRect();
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  if(!r.height || !vh){ inboxVisible = false; return; }
+  const shown = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+  inboxVisible = (shown / Math.min(r.height, vh)) >= 0.3;
+  if(inboxVisible) markAllInboxRead(false);
+}
+function watchInboxRead(){
+  window.removeEventListener('scroll', scheduleInboxCheck);
+  window.addEventListener('scroll', scheduleInboxCheck, { passive:true });
+  window.removeEventListener('resize', scheduleInboxCheck);
+  window.addEventListener('resize', scheduleInboxCheck);
+  setTimeout(checkInboxVisible, 350);
+}
+function scheduleInboxCheck(){
+  if(inboxT) clearTimeout(inboxT);
+  inboxT = setTimeout(checkInboxVisible, 350);
 }
 function renderInbox(){
   const box = $('#inboxList');
   if(!box) return;
+  if(inboxVisible) markAllInboxRead(true);
   const list = studentPlanList(U.id, profile.name);
   const st = getRegistry().find(x => x.id === U.id);
   const track = st ? (st.track || '') : '';
@@ -2017,10 +2061,7 @@ function openInbox(){
     '<div class="qfoot" style="justify-content:center"><button class="btn btn-ghost" id="inboxClose">إغلاق</button></div>';
   $('#modal').hidden = false;
   $('#inboxClose').onclick = () => { $('#modal').hidden = true; };
-  const l = getPlans();
-  let ch = false;
-  l.forEach(p => { if(p.sid === U.id && !p.read){ p.read = true; ch = true; } });
-  if(ch){ savePlans(l); renderBell(); renderInbox(); }
+  markAllInboxRead(false);
 }
 function renderSent(){
   const box = $('#tpSent');
@@ -2029,8 +2070,8 @@ function renderSent(){
   const reg = getRegistry();
   box.innerHTML = list.length ? list.map(p => {
     const st = reg.find(x => x.id === p.sid);
-    return '<div class="review-row"><div class="rq">' + esc(p.title) + ' — ' + esc(st ? st.name : '—') + '</div>' +
-      '<div class="rr">' + p.date + ' • ' + (p.time || '') + (p.read ? ' • تمت القراءة' : ' • لم تُقرأ بعد') +
+    return '<div class="review-row"><div class="rq">' + esc(p.title) + ' — ' + esc(st ? st.name : (p.name || '—')) + '</div>' +
+      '<div class="rr">' + p.date + ' • ' + (p.time || '') + ' ' + (p.read ? '<b style="color:#15803d">✅ تمت قراءتها</b>' : '<b style="color:#b45309">⏳ لم تُقرأ بعد</b>') +
       ' <button class="btn btn-ghost btn-sm" data-delsent="' + p.id + '">حذف</button></div></div>';
   }).join('') : '<div class="empty">لم تُرسل أي خطة بعد.</div>';
   box.querySelectorAll('[data-delsent]').forEach(b => b.onclick = () => {
@@ -2177,6 +2218,7 @@ function syncPush(){
     score:a.score, correct:a.correct, total:a.total, answered:a.answered || 0, hints:a.hints || 0, retry:!!a.retry,
     wrong:(a.wrong || []).slice(0, 10), date:a.date, time:a.time || '' }));
   rec.n = att.length;
+  rec.reads = getPlans().filter(p => (p.sid === U.id || (profile.name && p.name === profile.name)) && p.read).map(p => p.id).slice(-20);
   // رسالة واحدة مضغوطة (الخدمة تحدّ الطلبات، فنرسل رسالة واحدة كل مرة)
   let items = att.slice(-12);
   let body = JSON.stringify({ t:'rec', rec: Object.assign({}, rec, { att: items }) });
@@ -2196,6 +2238,33 @@ function syncPush(){
 function syncPushSoon(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(() => { syncPushTimer = null; syncPush(); }, 3000);
+}
+function attKey(a){
+  return [a.mode, a.subject, a.field, a.date, a.time || '', a.score, a.correct, a.total, a.answered || 0].join('|');
+}
+function mergeAttemptLists(local, incoming){
+  const map = {};
+  (local || []).forEach(a => { map[attKey(a)] = a; });
+  (incoming || []).forEach(a => { const k = attKey(a); if(!map[k]) map[k] = a; });
+  return Object.keys(map).map(k => map[k]).sort((x, y) => {
+    const a = (x.date || '') + ' ' + (x.time || ''), b = (y.date || '') + ' ' + (y.time || '');
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+}
+function mergeProgressData(local, incoming){
+  const out = {};
+  Object.keys(local || {}).forEach(k => { out[k] = local[k]; });
+  Object.keys(incoming || {}).forEach(k => {
+    const a = out[k] || {}, b = incoming[k] || {};
+    const am = a.mcq || {}, bm = b.mcq || {}, at2 = a.tasks || {}, bt = b.tasks || {}, af = a.fig || {}, bf = b.fig || {};
+    out[k] = {
+      mcq: { best: Math.max(am.best || 0, bm.best || 0), attempts: Math.max(am.attempts || 0, bm.attempts || 0), correct: Math.max(am.correct || 0, bm.correct || 0) },
+      tasks: { done: Math.max(at2.done || 0, bt.done || 0) },
+      fig: { best: Math.max(af.best || 0, bf.best || 0), attempts: Math.max(af.attempts || 0, bf.attempts || 0) },
+      last: a.last || b.last || 0
+    };
+  });
+  return out;
 }
 function materializeSync(id){
   const cache = gRaw('nafas_sync_cache', {});
@@ -2219,20 +2288,31 @@ function materializeSync(id){
   st.logins = st.logins || {};
   Object.keys(rec.logins || {}).forEach(d => { st.logins[d] = Math.max(st.logins[d] || 0, rec.logins[d]); });
   saveRegistry(reg);
-  if(id !== U.id){
-    const parts = c.parts || {};
-    const atts = [];
-    Object.keys(parts).map(Number).sort((a, b) => a - b).forEach(i => (parts[i] || []).forEach(a => atts.push(a)));
-    if(rec.att && rec.att.length) writeUser(id, 'attempts', rec.att);
-    else if(atts.length) writeUser(id, 'attempts', atts);
-    if(rec.progress && Object.keys(rec.progress).length){
-      const prog = {};
-      Object.keys(rec.progress).forEach(k => { const p = rec.progress[k];
-        prog[k] = { mcq:{ best:p.b || 0, attempts:p.a || 0, correct:p.c || 0 }, tasks:{ done:p.t || 0 },
-                    fig:{ best:p.fb || 0, attempts:p.fa || 0 }, last:0 }; });
-      writeUser(id, 'progress', prog);
-    }
-    if(rec.profile) writeUser(id, 'profile', rec.profile);
+  const parts = c.parts || {};
+  const atts = [];
+  Object.keys(parts).map(Number).sort((a, b) => a - b).forEach(i => (parts[i] || []).forEach(a => atts.push(a)));
+  const incoming = (rec.att && rec.att.length) ? rec.att : atts;
+  const curAtt = readUser(id, 'attempts', []);
+  const merged = mergeAttemptLists(curAtt, incoming);
+  if(merged.length && merged.length !== curAtt.length) writeUser(id, 'attempts', merged);
+  if(rec.progress && Object.keys(rec.progress).length){
+    const prog = {};
+    Object.keys(rec.progress).forEach(k => { const p = rec.progress[k];
+      prog[k] = { mcq:{ best:p.b || 0, attempts:p.a || 0, correct:p.c || 0 }, tasks:{ done:p.t || 0 },
+                  fig:{ best:p.fb || 0, attempts:p.fa || 0 }, last:0 }; });
+    writeUser(id, 'progress', mergeProgressData(readUser(id, 'progress', {}), prog));
+  }
+  if(rec.profile){
+    const curProf = readUser(id, 'profile', {});
+    const mergedProf = Object.assign({}, curProf);
+    Object.keys(rec.profile).forEach(k => { if(rec.profile[k] && !mergedProf[k]) mergedProf[k] = rec.profile[k]; });
+    writeUser(id, 'profile', mergedProf);
+  }
+  if(rec.reads && rec.reads.length){
+    const pl = getPlans();
+    let hit = false;
+    pl.forEach(p => { if(rec.reads.indexOf(p.id) >= 0 && !p.read){ p.read = true; p.readAt = Date.now(); hit = true; } });
+    if(hit) savePlans(pl);
   }
   return true;
 }
@@ -2271,6 +2351,11 @@ function syncPull(){
             savePlans(pl);
             changed = true;
           }
+        } else if(p.t === 'read' && p.ids){
+          const pl = getPlans();
+          let hit = false;
+          pl.forEach(x => { if(p.ids.indexOf(x.id) >= 0 && !x.read){ x.read = true; x.readAt = Date.now(); hit = true; } });
+          if(hit){ savePlans(pl); changed = true; }
         }
       });
       if(changed) sRaw('nafas_sync_cache', cache);
@@ -2454,6 +2539,50 @@ function renderTodayMedals(){
       '<td>' + (r.D.mcqCount || '—') + '</td><td>' + (r.D.best ? r.D.best + '٪' : '—') + '</td>' +
       '<td>' + medalIcons(r.medals) + '</td></tr>').join('') + '</table></div>'
     : '<div class="empty">لا توجد أوسمة اليوم بعد — تتجدّد الأوسمة تلقائياً كل يوم بحسب دخول الطالبات وإنجازهن 🌅</div>';
+}
+
+function medalsForDate(id, date){
+  const all = readUser(id, 'attempts', []);
+  const st = getRegistry().find(x => x.id === id) || { logins:{} };
+  const day = all.filter(a => a.date === date);
+  const mcq = day.filter(a => a.mode === 'mcq');
+  const best = day.reduce((m, a) => Math.max(m, a.score || 0), 0);
+  const logins = (st.logins && st.logins[date]) || 0;
+  const m = [];
+  if(logins) m.push({ i:'🌅', n:'حاضرة' });
+  if(logins > 1) m.push({ i:'🔁', n:'مثابرة' });
+  if(mcq.length) m.push({ i:'⚡', n:'اختبار' });
+  if(best >= 100) m.push({ i:'💯', n:'القمة' });
+  else if(best >= 90) m.push({ i:'🎯', n:'متميّزة' });
+  else if(best >= 80) m.push({ i:'📗', n:'جيدة' });
+  else if(best >= 60 && mcq.length) m.push({ i:'🌱', n:'تحتاج تثبيتاً' });
+  if(day.some(a => a.mode === 'fig')) m.push({ i:'🖼️', n:'رسوم' });
+  if(day.some(a => a.mode === 'tasks')) m.push({ i:'✍️', n:'مهام' });
+  const active = {};
+  all.forEach(a => { if(a.date) active[a.date] = 1; });
+  Object.keys(st.logins || {}).forEach(d => { active[d] = 1; });
+  let streak = 0, cur = date;
+  while(active[cur]){ streak++; cur = addDaysUTC(cur, -1); }
+  if(streak >= 3) m.push({ i:'🔥', n:'مواظبة ' + streak + ' أيام' });
+  return m;
+}
+function medalHistory(id, limit){
+  const all = readUser(id, 'attempts', []);
+  const st = getRegistry().find(x => x.id === id) || { logins:{} };
+  const days = [...new Set(all.map(a => a.date).concat(Object.keys(st.logins || {})))].filter(Boolean).sort().reverse();
+  const out = [];
+  days.slice(0, limit || 14).forEach(d => {
+    const m = medalsForDate(id, d);
+    if(m.length) out.push({ date:d, medals:m });
+  });
+  return out;
+}
+function medalHistoryHTML(id, limit){
+  const h = medalHistory(id, limit || 14);
+  if(!h.length) return '<div class="empty">لم تُسجّل أوسمة بعد.</div>';
+  return '<div class="tp-table"><table><tr><th>اليوم</th><th>الأوسمة</th></tr>' +
+    h.map(x => '<tr><td>' + x.date + '</td><td>' + x.medals.map(m => '<span class="medal" title="' + esc(m.n) + '">' + m.i + '</span>').join('') + '</td></tr>').join('') +
+    '</table></div>';
 }
 
 /* ---------- الوضع الليلي ---------- */
