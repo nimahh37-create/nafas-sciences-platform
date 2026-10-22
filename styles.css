@@ -469,3 +469,25 @@ body.dark .notice{background:#241d3d;color:#ddd6fe}
 .tp-send .btn{white-space:nowrap}
 
 .plan-msg.report{border-inline-start:4px solid var(--sky);background:linear-gradient(180deg,var(--bg2),var(--sky-l))}
+
+/* ============ الأوسمة التحفيزية ============ */
+.medal{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--line2);font-size:16px;margin:2px;border:1px solid transparent}
+.medals-row{display:flex;flex-wrap:wrap;gap:12px}
+.medal-card{width:132px;border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center;background:var(--bg2);box-shadow:var(--sh-1)}
+.medal-card .mc-i{font-size:30px;line-height:1.2}
+.medal-card b{display:block;font-size:13.5px;margin:4px 0 2px}
+.medal-card small{display:block;font-size:11.5px;color:var(--muted);line-height:1.5}
+.badge .bico{font-size:22px}
+
+/* ============ المراكز الخمسة ============ */
+.podium{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.pod{border:1px solid var(--line);border-radius:16px;padding:12px 10px;text-align:center;background:var(--bg2);box-shadow:var(--sh-1);position:relative}
+.pod.p1{border-color:#f59e0b;background:linear-gradient(180deg,#fffbeb,var(--bg2));box-shadow:var(--sh-2)}
+.pod.p2{border-color:#9ca3af}
+.pod.p3{border-color:#b45309}
+.pod-m{font-size:30px;line-height:1.2}
+.pod-name{font-weight:800;font-size:14px;margin:2px 0}
+.pod-school{font-size:11.5px;color:var(--muted)}
+.pod-stats{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:6px 0;font-size:12px;color:var(--violet-d);font-weight:700}
+.pod-medals{min-height:30px}
+@media(max-width:760px){.podium{grid-template-columns:repeat(2,1fr)}.podium .pod:last-child{grid-column:1/-1}}
