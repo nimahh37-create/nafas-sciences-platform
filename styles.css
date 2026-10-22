@@ -444,3 +444,13 @@ body.dark .logingate{background:linear-gradient(160deg,#1b1730,#2a1f2e 60%,#1d23
 .pm-foot{margin-top:6px}
 .plan-send textarea{width:100%;min-height:190px;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:inherit;font-size:13.5px;line-height:1.9;background:var(--bg);color:var(--ink);resize:vertical}
 .plan-send h3{margin-bottom:4px}
+
+/* ============ اختيار الدور في شاشة الدخول ============ */
+.lg-roles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0 6px}
+.lg-role{font-family:inherit;text-align:center;padding:20px 14px;border:1.5px solid var(--line);border-radius:18px;background:var(--bg);cursor:pointer;transition:.18s;display:grid;gap:5px;justify-items:center}
+.lg-role:hover{border-color:var(--violet);background:var(--violet-l);transform:translateY(-3px);box-shadow:var(--sh-2)}
+.lg-role.teacher:hover{border-color:var(--pink);background:var(--pink-l)}
+.lg-role .lg-rico{font-size:36px;line-height:1.15}
+.lg-role b{font-size:16.5px;color:var(--ink)}
+.lg-role small{font-size:12px;color:var(--muted);line-height:1.65;max-width:190px}
+@media(max-width:520px){.lg-roles{grid-template-columns:1fr}}

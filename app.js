@@ -75,6 +75,7 @@ function renderLoginGate(){
     (st.lastSeen ? new Date(st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</small></span></button>').join('')
     : '<div class="empty">لا توجد طالبات مسجلات على هذا الجهاز بعد — سجّلي حساباً جديداً بالأسفل.</div>';
   list.querySelectorAll('[data-id]').forEach(b => b.onclick = () => activateUser(b.dataset.id));
+  showLoginRole('');
   $('#loginGate').hidden = false;
 }
 function activateUser(id){
@@ -1589,7 +1590,7 @@ function initTeacherDates(){
   if(t && !t.value) t.value = d.to;
 }
 on('#teacherBtn', () => openTeacher());
-on('#tpClose', () => { $('#teacherPanel').hidden = true; });
+on('#tpClose', () => { $('#teacherPanel').hidden = true; if(!U.id) renderLoginGate(); });
 on('#teacherPinBtn', () => teacherLogin());
 on('#tpRefresh', () => { renderTeacher(); toast('تم تحديث التحليل ✅'); });
 on('#tpWeekly', () => printWeekly());
@@ -1795,6 +1796,48 @@ on('#tpSendAllImprove', () => sendPlanToAll('improvement'));
 on('#tpSendAllRemedial', () => sendPlanToAll('remedial'));
 on('#tpSendAllEnrich', () => sendPlanToAll('enrichment'));
 
+
+/* ---------- اختيار الدور في شاشة الدخول ---------- */
+function showLoginRole(role){
+  const roles = $('#lgRoles'), sv = $('#lgStudentView'), tv = $('#lgTeacherView'), back = $('#lgBackRoles');
+  const title = $('#lgTitle'), sub = $('#lgSubtitle');
+  const hide = (e) => { if(e) e.hidden = true; };
+  const show = (e) => { if(e) e.hidden = false; };
+  if(role === 'student'){
+    hide(roles); show(sv); hide(tv); show(back);
+    if(title) title.textContent = 'دخول الطالبة 👩‍🎓';
+    if(sub) sub.textContent = 'اختاري اسمك للمتابعة، أو سجّلي حساباً جديداً.';
+  } else if(role === 'teacher'){
+    hide(roles); hide(sv); show(tv); show(back);
+    if(title) title.textContent = 'دخول المعلمة 🎓';
+    if(sub) sub.textContent = 'أدخلي الرمز السري للمعلمة للوصول إلى لوحة المتابعة والتحليل.';
+    const p = $('#lgTeacherPin');
+    if(p){ p.value = ''; setTimeout(() => { try { p.focus(); } catch(e){} }, 80); }
+  } else {
+    show(roles); hide(sv); hide(tv); hide(back);
+    if(title) title.textContent = 'من أنتِ؟ 👋';
+    if(sub) sub.textContent = 'اختاري طريقة الدخول — يمكنك تغييرها في أي وقت.';
+  }
+}
+function teacherGateLogin(){
+  const inp = $('#lgTeacherPin');
+  const v = inp ? inp.value.trim() : '';
+  if(v === pin){
+    teacherAuthed = true;
+    $('#loginGate').hidden = true;
+    toast('أهلاً بكِ أستاذة 👩‍🏫');
+    openTeacher();
+  } else {
+    toast('الرمز غير صحيح ❌');
+    if(inp){ inp.value = ''; try { inp.focus(); } catch(e){} }
+  }
+}
+on('#roleStudent', () => showLoginRole('student'));
+on('#roleTeacher', () => showLoginRole('teacher'));
+on('#lgBackRoles', () => showLoginRole(''));
+on('#lgTeacherGo', () => teacherGateLogin());
+const lgp = $('#lgTeacherPin');
+if(lgp) lgp.addEventListener('keydown', e => { if(e.key === 'Enter') teacherGateLogin(); });
 
 /* ---------- الوضع الليلي ---------- */
 $('#themeBtn').onclick = () => {

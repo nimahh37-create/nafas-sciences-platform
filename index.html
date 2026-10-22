@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 
@@ -84,16 +84,43 @@
         <small>إدارة تعليم جيزان · إعداد المعلمة: نعمة هرشان</small>
       </div>
     </div>
-    <h2>مرحباً بكِ 👋</h2>
-    <p class="muted">اختاري اسمك للمتابعة، أو سجّلي حساباً جديداً. تُحفظ بياناتك في هذا الجهاز فقط.</p>
-    <div class="lg-list" id="loginList"></div>
-    <div class="lg-sep"><span>أو تسجيل طالبة جديدة</span></div>
-    <div class="lg-form">
-      <input id="lgName" placeholder="اسم الطالبة">
-      <input id="lgSchool" placeholder="اسم المدرسة">
-      <input id="lgClass" placeholder="الصف">
-      <button class="btn btn-primary" id="lgAddBtn">تسجيل ودخول</button>
+    <h2 id="lgTitle">من أنتِ؟ 👋</h2>
+    <p class="muted" id="lgSubtitle">اختاري طريقة الدخول — يمكنك تغييرها في أي وقت.</p>
+    <div class="lg-roles" id="lgRoles">
+      <button class="lg-role" id="roleStudent">
+        <span class="lg-rico">👩‍🎓</span>
+        <b>طالبة</b>
+        <small>أتدرّب على أسئلة نافس وأنجز مهام المؤشر</small>
+      </button>
+      <button class="lg-role teacher" id="roleTeacher">
+        <span class="lg-rico">🎓</span>
+        <b>معلمة</b>
+        <small>لوحة المتابعة والتحليل البياني وطباعة التقارير</small>
+      </button>
     </div>
+
+    <div id="lgStudentView" hidden>
+      <p class="muted">اختاري اسمك للمتابعة، أو سجّلي حساباً جديداً. تُحفظ بياناتك في هذا الجهاز فقط.</p>
+      <div class="lg-list" id="loginList"></div>
+      <div class="lg-sep"><span>أو تسجيل طالبة جديدة</span></div>
+      <div class="lg-form">
+        <input id="lgName" placeholder="اسم الطالبة">
+        <input id="lgSchool" placeholder="اسم المدرسة">
+        <input id="lgClass" placeholder="الصف">
+        <button class="btn btn-primary" id="lgAddBtn">تسجيل ودخول</button>
+      </div>
+    </div>
+
+    <div id="lgTeacherView" hidden>
+      <p class="muted">أدخلي الرمز السري للمعلمة للوصول إلى لوحة المتابعة والتحليل والتقارير.</p>
+      <div class="pin-row" id="lgTeacherPinRow">
+        <input type="password" inputmode="numeric" maxlength="4" id="lgTeacherPin" placeholder="••••">
+        <button class="btn btn-primary" id="lgTeacherGo">دخول</button>
+      </div>
+      <small class="muted">الرمز الافتراضي: <b>1234</b> — يمكن تغييره من لوحة ولي الأمر.</small>
+    </div>
+
+    <button class="btn btn-ghost btn-sm" id="lgBackRoles" hidden style="margin-top:14px">رجوع لاختيار الدور</button>
   </div>
 </div>
 
@@ -407,14 +434,14 @@
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
 <div id="printArea" aria-hidden="true"></div>
-<script src="data-f11.js?v=13"></script>
-<script src="data-f12.js?v=13"></script>
-<script src="data-f13.js?v=13"></script>
-<script src="data-f14.js?v=13"></script>
-<script src="data-e31.js?v=13"></script>
-<script src="data-e32.js?v=13"></script>
-<script src="data-e33.js?v=13"></script>
-<script src="data-figs.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="data-f11.js?v=14"></script>
+<script src="data-f12.js?v=14"></script>
+<script src="data-f13.js?v=14"></script>
+<script src="data-f14.js?v=14"></script>
+<script src="data-e31.js?v=14"></script>
+<script src="data-e32.js?v=14"></script>
+<script src="data-e33.js?v=14"></script>
+<script src="data-figs.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
