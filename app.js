@@ -125,10 +125,28 @@ function addStudent(){
   renderAll();
   toast('تم تسجيل ' + name + ' ✅');
 }
-function switchUser(){
-  U.id = ''; localStorage.removeItem('nafas_active');
+function logoutToRoles(role){
+  U.id = '';
+  localStorage.removeItem('nafas_active');
+  teacherAuthed = false;
+  const tp = $('#teacherPanel'); if(tp) tp.hidden = true;
+  const tb = $('#teacherBody'); if(tb) tb.hidden = true;
+  const tg = $('#teacherGate'); if(tg) tg.hidden = false;
+  const tin = $('#teacherPin'); if(tin) tin.value = '';
+  const pb = $('#parentBody'); if(pb) pb.hidden = true;
+  const pg = $('#parentGate'); if(pg) pg.hidden = false;
+  const pi = $('#pinInput'); if(pi) pi.value = '';
+  const md = $('#modal'); if(md) md.hidden = true;
+  const ip = $('#inboxPanel'); if(ip) ip.hidden = true;
+  $$('.panel').forEach(p => p.classList.remove('show'));
+  const hub = $('#sec-hub'); if(hub) hub.classList.add('show');
+  $$('.mainnav button').forEach(b => b.classList.toggle('active', b.dataset.sec === 'hub'));
+  const nav = $('#mainNav'); if(nav) nav.classList.remove('open');
   renderLoginGate();
+  if(role) showLoginRole(role);
+  toast('تم الخروج — اختاري الدور من جديد 👋');
 }
+function switchUser(){ logoutToRoles('student'); }
 function renderAll(){
   renderProfile(); renderHub(); renderTrain(); renderProgress(); renderUploaded();
   renderInbox(); renderBell();
@@ -1019,6 +1037,8 @@ function parentLogin(){
 }
 $('#pinBtn').onclick = parentLogin;
 $('#pinInput').addEventListener('keydown', e => { if(e.key === 'Enter') parentLogin(); });
+const parentLogoutBtn = $('#parentLogout'); if(parentLogoutBtn) parentLogoutBtn.onclick = () => logoutToRoles();
+const parentSwitchBtn = $('#parentSwitch'); if(parentSwitchBtn) parentSwitchBtn.onclick = () => logoutToRoles('student');
 
 function renderParent(){
   const mcq = attempts.filter(a => a.mode === 'mcq');
@@ -1316,6 +1336,7 @@ on('#wkRefresh', () => { renderWeekly(); toast('تم تحديث التقرير �
 on('#printWeekly', () => printWeekly());
 on('#addStudentBtn', () => switchUser());
 on('#switchUserBtn', () => switchUser());
+on('#logoutBtn', () => logoutToRoles());
 on('#lgAddBtn', () => addStudent());
 
 /* ---------- لوحة المعلمة: تحليل بياني كامل + متابعة الطالبات ---------- */
@@ -2702,9 +2723,9 @@ $('#dailyBtn').onclick = () => {
 /* ---------- التشغيل ---------- */
 migrateLegacy();
 if(U.id && !studentExists(U.id)){ U.id = ''; localStorage.removeItem('nafas_active'); }
-if(U.id) logLogin();
 renderAll();
 initWeekInputs();
 startSyncLoop();
-syncPushSoon();
-if(!U.id) renderLoginGate();
+if(U.id) syncPushSoon();
+// شاشة اختيار الدور تظهر دائماً عند فتح المنصة أو تحديث الصفحة
+renderLoginGate();
