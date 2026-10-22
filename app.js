@@ -84,7 +84,8 @@ function activateUser(id){
   logLogin();
   $('#loginGate').hidden = true;
   renderAll();
-  toast('أهلًا ' + (profile.name || '') + ' 👋');
+  const un = unreadFor(U.id);
+  toast(un ? 'أهلًا ' + (profile.name || '') + ' 👋 — لديك ' + un + ' رسالة من معلمة 📩' : 'أهلًا ' + (profile.name || '') + ' 👋');
 }
 function addStudent(){
   const name = $('#lgName').value.trim(), school = $('#lgSchool').value.trim(), cls = $('#lgClass').value.trim();
@@ -109,6 +110,7 @@ function switchUser(){
 }
 function renderAll(){
   renderProfile(); renderHub(); renderTrain(); renderProgress(); renderUploaded();
+  renderInbox(); renderBell();
   const an = $('#activeName'); if(an) an.textContent = profile.name || 'الطالبة';
 }
 
@@ -244,6 +246,8 @@ function renderHub(){
     pm.hidden = false;
     pm.innerHTML = '💌 <b>رسالة من ولي الأمر:</b> ' + m.text;
   } else pm.hidden = true;
+  renderInbox();
+  renderBell();
 }
 function streakDays(){
   const days = [...new Set(attempts.map(a => a.date))].sort().reverse();
@@ -1144,6 +1148,7 @@ function buildWeeklyReport(){
     html += '<h2>نتائج مرفوعة من تطبيق «مستقبلهم»</h2><table class="rep-table"><tr><th>الطالبة</th><th>المدرسة</th><th>الاختبار</th><th>الدرجة</th><th>التاريخ</th></tr>' +
       ups.slice().reverse().map(u => '<tr><td style="text-align:right">' + esc(u.student) + '</td><td>' + esc(u.school || '—') + '</td><td style="text-align:right">' + esc(u.exam) + '</td><td>' + u.score + '%</td><td>' + u.date + '</td></tr>').join('') + '</table>';
   }
+  html += analysisHTML(from, to);
   html += '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div>' +
     '<p class="rep-foot">تقرير صادر من منصة «تدريب نافس علوم» — إدارة تعليم جيزان — إعداد المعلمة نعمة هرشان.</p></div>';
   return html;
@@ -1224,6 +1229,572 @@ on('#switchUserBtn', () => switchUser());
 on('#lgAddBtn', () => addStudent());
 const imp = $('#importFile');
 if(imp) imp.onchange = e => { if(e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; };
+
+/* ---------- لوحة المعلمة: تحليل بياني كامل + متابعة الطالبات ---------- */
+function addDaysUTC(ds, n){
+  const d = new Date(ds + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0,10);
+}
+function fieldOf(sub, code){
+  if(!BANK[sub]) return null;
+  return BANK[sub].fields.find(f => f.code === code) || null;
+}
+function buildAnalysis(from, to){
+  const reg = getRegistry();
+  const rows = reg.map(st => ({ st, w: weekData(st, from, to) }));
+  const days = [];
+  let d = from, guard = 0;
+  while(d <= to && guard++ < 40){ days.push(d); d = addDaysUTC(d, 1); }
+
+  let att = 0, mcqAtt = 0, figAtt = 0, taskAtt = 0, correct = 0, total = 0, certs = 0, sessions = 0, loginDays = 0;
+  const dist = [{ l:'أقل من 40%', c:0 },{ l:'40% - 59%', c:0 },{ l:'60% - 79%', c:0 },{ l:'80% فأكثر', c:0 }];
+  rows.forEach(r => {
+    att += r.w.inWeek.length;
+    sessions += r.w.sessions;
+    loginDays += r.w.loginDays.length;
+    r.w.inWeek.forEach(a => {
+      if(a.mode === 'mcq'){
+        mcqAtt++; total += a.total || 0; correct += a.correct || 0;
+        if(a.score < 40) dist[0].c++; else if(a.score < 60) dist[1].c++; else if(a.score < 80) dist[2].c++; else dist[3].c++;
+      }
+      if(a.mode === 'fig') figAtt++;
+      if(a.mode === 'tasks') taskAtt++;
+      if(a.score >= 60) certs++;
+    });
+  });
+
+  // متوسط الأداء لكل مجال
+  const fields = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    let n = 0, sumLast = 0, sumBest = 0, weak = 0, best = 0, atts = 0;
+    rows.forEach(r => {
+      const fa = r.w.inWeek.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
+      if(!fa.length) return;
+      n++; atts += fa.length;
+      const last = fa[fa.length - 1].score;
+      const p = readUser(r.st.id, 'progress', {})[sub + '|' + f.code];
+      const b = (p && p.mcq && p.mcq.best) || 0;
+      sumLast += last; sumBest += b; best = Math.max(best, b);
+      if(last < 80) weak++;
+    });
+    fields.push({ code:f.code, title:f.title, sub, n, atts, avgLast: n ? Math.round(sumLast / n) : 0, avgBest: n ? Math.round(sumBest / n) : 0, weak, best });
+  }));
+
+  // اتجاه الأسبوع
+  const trend = days.map(dd => {
+    let a = 0, c = 0, t = 0, stu = new Set();
+    rows.forEach(r => r.w.inWeek.filter(x => x.date === dd).forEach(x => {
+      a++; stu.add(r.st.id);
+      if(x.mode === 'mcq'){ t += x.total || 0; c += x.correct || 0; }
+    }));
+    return { d: dd, att:a, acc: pct(c, t), stu: stu.size };
+  });
+
+  // أكثر المؤشرات تعثراً
+  const indMap = {};
+  rows.forEach(r => r.w.inWeek.filter(a => a.mode === 'mcq').forEach(a => {
+    const f = fieldOf(a.subject, a.field);
+    if(!f) return;
+    (a.wrong || []).forEach(i => {
+      const q = f.mcq[i];
+      if(!q || q.k === undefined) return;
+      const key = a.subject + '|' + a.field + '|' + q.k;
+      if(!indMap[key]) indMap[key] = { code:f.code, title:f.title, text:(f.ind[q.k] || ''), n:0, students:{} };
+      indMap[key].n++;
+      indMap[key].students[r.st.name] = true;
+    });
+  }));
+  const indicators = Object.values(indMap).map(x => ({ code:x.code, title:x.title, text:x.text, n:x.n, st:Object.keys(x.students).length }))
+    .sort((a, b) => b.n - a.n).slice(0, 6);
+
+  const ranking = rows.slice().sort((a, b) => (b.w.accuracy - a.w.accuracy) || (b.w.inWeek.length - a.w.inWeek.length));
+
+  return { from, to, rows, days, trend, fields, dist, indicators, ranking,
+    totals:{ students: rows.length, sessions, loginDays, att, mcqAtt, figAtt, taskAtt, certs,
+             accuracy: pct(correct, total), totalQ: total, totalC: correct } };
+}
+function anaBar(v, color){ return '<div class="ana-bar"><i style="width:' + Math.max(2, Math.min(100, v)) + '%;background:' + (color || '#6d28d9') + '"></i></div>'; }
+function scoreColor(v){ return v >= 80 ? '#059669' : v >= 60 ? '#d97706' : '#dc2626'; }
+function renderTeacher(){
+  const from = ($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from;
+  const to = ($('#tpTo') && $('#tpTo').value) || defaultWeek().to;
+  const A = buildAnalysis(from, to);
+  const T = A.totals;
+  $('#tpRangeTxt').textContent = 'الفترة: ' + from + ' — ' + to;
+
+  $('#tpCards').innerHTML =
+    '<div class="kpi"><b>' + T.students + '</b><small>طالبة مسجلة</small></div>' +
+    '<div class="kpi"><b>' + T.sessions + '</b><small>جلسات دخول</small></div>' +
+    '<div class="kpi"><b>' + T.att + '</b><small>محاولات</small></div>' +
+    '<div class="kpi"><b>' + T.accuracy + '%</b><small>متوسط الدقة</small></div>' +
+    '<div class="kpi"><b>' + T.certs + '</b><small>شهادة مكتسبة</small></div>' +
+    '<div class="kpi"><b>' + T.loginDays + '</b><small>أيام دخول</small></div>' +
+    '<div class="kpi"><b>' + T.mcqAtt + '</b><small>اختبار</small></div>' +
+    '<div class="kpi"><b>' + T.figAtt + '</b><small>مجموعة رسوم</small></div>';
+
+  // متوسط الدقة لكل مجال
+  $('#tpFieldChart').innerHTML = A.fields.map(f =>
+    '<div class="ana-row"><div class="an-l">' + f.code + ' — ' + f.title +
+      '<small>' + f.n + ' طالبة • ' + f.atts + ' محاولة • تحتاج دعماً: ' + f.weak + '</small></div>' +
+    '<div>' + anaBar(f.avgLast, scoreColor(f.avgLast)) + '<small>متوسط آخر نتيجة ' + f.avgLast + '%</small></div>' +
+    '<div class="an-v">' + (f.n ? f.avgLast + '%' : '—') + '</div></div>').join('');
+
+  // اتجاه الأسبوع
+  const maxAtt = Math.max(1, ...A.trend.map(x => x.att));
+  $('#tpTrend').innerHTML = '<div class="trend">' + A.trend.map(x =>
+    '<div class="tc-col"><span class="tc-v">' + x.att + '</span>' +
+    '<div class="tc-bar" style="height:' + Math.max(4, Math.round(x.att / maxAtt * 120)) + 'px"></div>' +
+    '<small>' + x.d.slice(5) + '</small><small>' + (x.acc ? x.acc + '%' : '') + '</small></div>').join('') + '</div>';
+
+  // توزيع الدرجات
+  const maxD = Math.max(1, ...A.dist.map(x => x.c));
+  $('#tpDist').innerHTML = A.dist.map(x =>
+    '<div class="ana-row"><div class="an-l">' + x.l + '</div>' +
+    '<div>' + anaBar(Math.round(x.c / maxD * 100), '#db2777') + '</div>' +
+    '<div class="an-v">' + x.c + '</div></div>').join('') +
+    '<p class="muted" style="font-size:12px;margin-top:8px">محاولات الاختيار من متعدد خلال الفترة: ' + T.mcqAtt + ' اختبار.</p>';
+
+  // أكثر المؤشرات تعثراً
+  $('#tpIndicators').innerHTML = A.indicators.length ? A.indicators.map(x =>
+    '<div class="ana-row"><div class="an-l">' + x.code + ' — ' + x.title +
+      '<small>' + x.text + '</small></div>' +
+    '<div>' + anaBar(Math.min(100, x.n * 12), '#dc2626') + '</div>' +
+    '<div class="an-v">' + x.n + '<small style="font-weight:400">' + x.st + ' طالبة</small></div></div>').join('')
+    : '<div class="empty">لا توجد أخطاء متكررة في هذه الفترة 🌟</div>';
+
+  // جدول الطالبات
+  $('#tpStudents').innerHTML = A.rows.length ? '<div class="tp-table"><table><tr><th>الطالبة</th><th>المدرسة</th><th>أيام الدخول</th><th>الجلسات</th><th>آخر دخول</th><th>محاولات</th><th>الدقة</th><th>أفضل نتيجة</th><th>الحالة</th><th>المسار والإرسال</th></tr>' +
+    A.rows.map(r => '<tr><td><b>' + esc(r.st.name) + '</b></td><td>' + esc(r.st.school || '—') + '</td>' +
+      '<td>' + r.w.loginDays.length + '</td><td>' + r.w.sessions + '</td>' +
+      '<td>' + (r.st.lastSeen ? new Date(r.st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</td>' +
+      '<td>' + r.w.inWeek.length + '</td><td>' + (r.w.mcqCount ? r.w.accuracy + '%' : '—') + '</td>' +
+      '<td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + weekStatus(r.w) + '</td>' +
+      '<td class="tp-send"><select data-track="' + r.st.id + '"><option value="">متوازنة</option>' +
+      '<option value="remedial"' + (r.st.track === 'remedial' ? ' selected' : '') + '>تحتاج علاجي</option>' +
+      '<option value="enrichment"' + (r.st.track === 'enrichment' ? ' selected' : '') + '>إثرائي</option></select>' +
+      '<button class="btn btn-soft btn-sm" data-sendrem="' + r.st.id + '">📩 علاجي</button> ' +
+      '<button class="btn btn-soft btn-sm" data-senden="' + r.st.id + '">📩 إثرائي</button> ' +
+      '<button class="btn btn-ghost btn-sm" data-sendnote="' + r.st.id + '">✉ إشعار</button></td></tr>').join('') + '</table></div>'
+    : '<div class="empty">لا توجد طالبات مسجلات على هذا الجهاز.</div>';
+  $('#tpStudents').querySelectorAll('[data-detail]').forEach(b => b.onclick = () => renderStudentDetail(b.dataset.detail));
+  $('#tpStudents').querySelectorAll('[data-openst]').forEach(b => b.onclick = () => { activateUser(b.dataset.openst); $('#teacherPanel').hidden = true; go('hub'); });
+  $('#tpStudents').querySelectorAll('[data-track]').forEach(s => s.onchange = () => {
+    const reg = getRegistry();
+    const st2 = reg.find(x => x.id === s.dataset.track);
+    if(st2){ st2.track = s.value; saveRegistry(reg); toast('مسار ' + st2.name + ': ' + (TRACK_LABEL[s.value] || 'متوازنة')); renderTeacher(); }
+  });
+  $('#tpStudents').querySelectorAll('[data-sendrem]').forEach(b => b.onclick = () => openSendPlan(b.dataset.sendrem, 'remedial'));
+  $('#tpStudents').querySelectorAll('[data-senden]').forEach(b => b.onclick = () => openSendPlan(b.dataset.senden, 'enrichment'));
+  $('#tpStudents').querySelectorAll('[data-sendnote]').forEach(b => b.onclick = () => openSendPlan(b.dataset.sendnote, 'note'));
+  renderSent();
+
+  renderStudentDetail(A.rows.length ? A.rows[0].st.id : null, A);
+  const planHost = $('#tpPlan');
+  if(planHost) planHost.innerHTML = improvementHTML();
+}
+function renderStudentDetail(id, A){
+  const host = $('#tpStudentDetail');
+  if(!host) return;
+  if(!id){ host.innerHTML = '<div class="empty">اختاري طالبة من الجدول لعرض تفصيل إنجازها.</div>'; return; }
+  const A2 = A || buildAnalysis(($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from, ($('#tpTo') && $('#tpTo').value) || defaultWeek().to);
+  const row = A2.rows.find(r => r.st.id === id);
+  if(!row){ host.innerHTML = '<div class="empty">غير متاح.</div>'; return; }
+  const st = row.st, w = row.w;
+  const all = readUser(st.id, 'attempts', []);
+  const prog = readUser(st.id, 'progress', {});
+  const fRows = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const fa = all.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
+    const p = prog[sub + '|' + f.code];
+    const best = (p && p.mcq && p.mcq.best) || 0;
+    const last = fa.length ? fa[fa.length - 1].score : null;
+    const tasks = (p && p.tasks && p.tasks.done) || 0;
+    const figs = (p && p.fig && p.fig.best) || 0;
+    fRows.push({ code:f.code, title:f.title, n:fa.length, best, last, tasks, figs, st: !fa.length ? 'لم تبدأ' : (last >= 80 ? 'متقنة' : last >= 60 ? 'جيدة' : 'تحتاج دعماً') });
+  }));
+  const weak = fRows.filter(f => f.n && f.last < 80);
+  host.innerHTML =
+    '<div class="toolbar-row"><b>👩‍🎓 ' + esc(st.name) + '</b><span class="muted">' + esc(st.school || '') + ' • ' + esc(st.cls || '') + '</span>' +
+    '<button class="btn btn-ghost btn-sm" id="tpPrintOne">🖨️ طباعة تقرير هذه الطالبة</button></div>' +
+    '<div class="grid-4"><div class="kpi"><b>' + w.inWeek.length + '</b><small>محاولات الفترة</small></div>' +
+    '<div class="kpi"><b>' + (w.mcqCount ? w.accuracy + '%' : '—') + '</b><small>دقة الفترة</small></div>' +
+    '<div class="kpi"><b>' + (w.best ? w.best + '%' : '—') + '</b><small>أفضل نتيجة</small></div>' +
+    '<div class="kpi"><b>' + w.sessions + '</b><small>جلسات الدخول</small></div></div>' +
+    '<div class="tp-table"><table><tr><th>المجال</th><th>المحاولات</th><th>أفضل نتيجة</th><th>آخر نتيجة</th><th>الرسوم</th><th>المهام</th><th>الحالة</th></tr>' +
+    fRows.map(f => '<tr><td>' + f.code + ' — ' + esc(f.title) + '</td><td>' + f.n + '</td><td>' + (f.best ? f.best + '%' : '—') + '</td>' +
+      '<td>' + (f.last === null ? '—' : f.last + '%') + '</td><td>' + (f.figs ? f.figs + '%' : '—') + '</td>' +
+      '<td>' + f.tasks + '/5</td><td>' + f.st + '</td></tr>').join('') + '</table></div>' +
+    '<p class="muted" style="margin-top:10px">' + (weak.length ? 'مجالات تحتاج دعماً: ' + weak.map(f => f.code + ' (' + f.last + '%)').join('، ') : 'لا توجد مجالات تحتاج دعماً 🌟') + '</p>' +
+    '<h3 style="margin-top:14px">آخر المحاولات</h3><div class="tp-table"><table><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th></tr>' +
+    (all.slice(-8).reverse().map(a => '<tr><td>' + esc(a.title) + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') || '<tr><td colspan="4">لا توجد محاولات</td></tr>') + '</table></div>';
+  const pb = $('#tpPrintOne');
+  if(pb) pb.onclick = () => printStudentReport(st.id);
+}
+function printStudentReport(id){
+  const st = getRegistry().find(x => x.id === id);
+  if(!st) return;
+  const all = readUser(id, 'attempts', []);
+  const prog = readUser(id, 'progress', {});
+  const rows = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const fa = all.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
+    const p = prog[sub + '|' + f.code];
+    rows.push('<tr><td>' + f.code + '</td><td style="text-align:right">' + f.title + '</td><td>' + fa.length + '</td>' +
+      '<td>' + (((p && p.mcq && p.mcq.best) || 0) + '%') + '</td>' +
+      '<td>' + (fa.length ? fa[fa.length - 1].score + '%' : '—') + '</td>' +
+      '<td>' + (((p && p.tasks && p.tasks.done) || 0) + '/5') + '</td></tr>');
+  }));
+  const html = '<div class="report"><div class="rep-head"><div><h1>تقرير إنجاز الطالبة</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء</p></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>الطالبة:</b> ' + esc(st.name) + '</div><div><b>المدرسة:</b> ' + esc(st.school || '—') + '</div>' +
+    '<div><b>الصف:</b> ' + esc(st.cls || '—') + '</div><div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div></div>' +
+    '<div class="rep-kpis"><div><b>' + all.length + '</b><span>محاولة</span></div>' +
+    '<div><b>' + all.filter(a => a.score >= 60).length + '</b><span>شهادة</span></div>' +
+    '<div><b>' + (st.sessions || 0) + '</b><span>جلسة دخول</span></div>' +
+    '<div><b>' + Object.keys(st.logins || {}).length + '</b><span>يوم دخول</span></div></div>' +
+    '<h2>أداؤها في المجالات</h2><table class="rep-table"><tr><th>المجال</th><th>العنوان</th><th>المحاولات</th><th>أفضل نتيجة</th><th>آخر نتيجة</th><th>المهام</th></tr>' + rows.join('') + '</table>' +
+    '<h2>آخر المحاولات</h2><table class="rep-table"><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th></tr>' +
+    all.slice(-15).reverse().map(a => '<tr><td style="text-align:right">' + esc(a.title) + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') + '</table>' +
+    '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div></div>';
+  $('#printArea').innerHTML = html;
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
+}
+function buildAnalysisReport(){
+  const from = ($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from;
+  const to = ($('#tpTo') && $('#tpTo').value) || defaultWeek().to;
+  const A = buildAnalysis(from, to), T = A.totals;
+  let html = '<div class="report"><div class="rep-head"><div><h1>التحليل البياني — إنجاز الطالبات</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>الفترة:</b> ' + from + ' — ' + to + '</div><div><b>تاريخ الإصدار:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div>' +
+    '<div><b>الطالبات:</b> ' + T.students + '</div><div><b>جلسات الدخول:</b> ' + T.sessions + ' (' + T.loginDays + ' يوماً)</div></div>' +
+    '<div class="rep-kpis"><div><b>' + T.students + '</b><span>طالبة</span></div>' +
+    '<div><b>' + T.att + '</b><span>محاولة</span></div>' +
+    '<div><b>' + T.accuracy + '%</b><span>متوسط الدقة</span></div>' +
+    '<div><b>' + T.certs + '</b><span>شهادة</span></div></div>' +
+    '<h2>متوسط الأداء في كل مجال</h2><table class="rep-table"><tr><th>المجال</th><th>الطالبات</th><th>المحاولات</th><th>متوسط آخر نتيجة</th><th>متوسط أفضل نتيجة</th><th>تحتاج دعماً</th></tr>' +
+    A.fields.map(f => '<tr><td>' + f.code + ' — ' + f.title + '</td><td>' + f.n + '</td><td>' + f.atts + '</td><td>' + (f.n ? f.avgLast + '%' : '—') + '</td><td>' + (f.n ? f.avgBest + '%' : '—') + '</td><td>' + f.weak + '</td></tr>').join('') + '</table>' +
+    '<h2>توزيع الدرجات</h2><table class="rep-table"><tr><th>الفئة</th><th>عدد المحاولات</th><th>النسبة</th></tr>' +
+    A.dist.map(x => '<tr><td>' + x.l + '</td><td>' + x.c + '</td><td>' + (T.mcqAtt ? Math.round(x.c / T.mcqAtt * 100) + '%' : '—') + '</td></tr>').join('') + '</table>' +
+    '<h2>اتجاه الإنجاز خلال الفترة</h2><table class="rep-table"><tr><th>اليوم</th><th>المحاولات</th><th>الطالبات النشطات</th><th>الدقة</th></tr>' +
+    A.trend.map(x => '<tr><td>' + x.d + '</td><td>' + x.att + '</td><td>' + x.stu + '</td><td>' + (x.att ? x.acc + '%' : '—') + '</td></tr>').join('') + '</table>' +
+    '<h2>أكثر المؤشرات تعثراً</h2>' + (A.indicators.length ? '<table class="rep-table"><tr><th>المجال</th><th>المؤشر</th><th>عدد الأخطاء</th><th>عدد الطالبات</th></tr>' +
+      A.indicators.map(x => '<tr><td>' + x.code + ' — ' + x.title + '</td><td style="text-align:right">' + x.text + '</td><td>' + x.n + '</td><td>' + x.st + '</td></tr>').join('') + '</table>'
+      : '<p class="rep-note">لا توجد أخطاء متكررة في هذه الفترة 🌟</p>') +
+    '<h2>ترتيب الطالبات</h2><table class="rep-table"><tr><th>الطالبة</th><th>المدرسة</th><th>محاولات</th><th>الدقة</th><th>أفضل نتيجة</th><th>جلسات الدخول</th></tr>' +
+    A.ranking.map(r => '<tr><td style="text-align:right">' + esc(r.st.name) + '</td><td>' + esc(r.st.school || '—') + '</td><td>' + r.w.inWeek.length + '</td><td>' + (r.w.mcqCount ? r.w.accuracy + '%' : '—') + '</td><td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + r.w.sessions + '</td></tr>').join('') + '</table>' +
+    '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div>' +
+    '<p class="rep-foot">تحليل صادر من منصة «تدريب نافس علوم» — إدارة تعليم جيزان — إعداد المعلمة نعمة هرشان.</p></div>';
+  return html;
+}
+function printAnalysis(){
+  $('#printArea').innerHTML = buildAnalysisReport();
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
+}
+function analysisHTML(from, to){
+  const A = buildAnalysis(from, to), T = A.totals;
+  let h = '<h2>التحليل البياني</h2>' +
+    '<table class="rep-table"><tr><th>المجال</th><th>الطالبات</th><th>المحاولات</th><th>متوسط آخر نتيجة</th><th>تحتاج دعماً</th></tr>' +
+    A.fields.map(f => '<tr><td>' + f.code + ' — ' + f.title + '</td><td>' + f.n + '</td><td>' + f.atts + '</td><td>' + (f.n ? f.avgLast + '%' : '—') + '</td><td>' + f.weak + '</td></tr>').join('') + '</table>' +
+    '<p class="rep-note"><b>توزيع الدرجات:</b> ' + A.dist.map(x => x.l + ': ' + x.c).join(' | ') + '</p>' +
+    '<p class="rep-note"><b>اتجاه الأسبوع:</b> ' + A.trend.map(x => x.d.slice(5) + ' — ' + x.att + ' محاولات، دقة ' + (x.att ? x.acc + '%' : '—')).join(' | ') + '</p>' +
+    '<p class="rep-note"><b>إجمالي المحاولات:</b> ' + T.att + ' • <b>اختبارات:</b> ' + T.mcqAtt + ' • <b>رسوم:</b> ' + T.figAtt + ' • <b>مهام مؤشر:</b> ' + T.taskAtt + ' • <b>شهادات:</b> ' + T.certs + '</p>';
+  if(A.indicators.length){
+    h += '<p><b>أكثر المؤشرات تعثراً:</b></p><ul>' + A.indicators.map(x => '<li>' + x.code + ' — ' + x.text + ' (' + x.n + ' خطأ من ' + x.st + ' طالبة)</li>').join('') + '</ul>';
+  }
+  return h;
+}
+
+/* ---------- خطة التحسين المقترحة (خطوات وتوصيات مبنية على البيانات) ---------- */
+function improvementPlan(){
+  const from = ($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from;
+  const to = ($('#tpTo') && $('#tpTo').value) || defaultWeek().to;
+  const A = buildAnalysis(from, to), T = A.totals;
+  const steps = [
+    { t:'تشخيص أسبوعي', d:'صدري التقرير الأسبوعي والتحليل البياني، ثم حدّدي أكثر من شهر تعثّرت فيه الطالبات.' },
+    { t:'خطة علاجية لكل طالبة', d:'افتحي ملف الطالبة من جدول الطالبات، وصدري لها خطة علاجية من صفحة «إنجازي»، واطبعيها كواجب بيتري.' },
+    { t:'حصة مركزية على المؤشر المتعثر', d:'قائمة «أكثر المؤشرات تعثراً» تحدد المؤشر الأضعف — تخصيص حصة قصيرة لممارسته مع أمثلة من أسئلة الرسوم.' },
+    { t:'مهمة مؤشر يومياً', d:'تكليف كل طالبة بمهمة مؤشر واحدة يومياً (5 دقائق) مع تقويم ذاتي بثلاث مستويات، وربطها بالخطوات في الخطة.' },
+    { t:'إعادة اختبار منتقاة ثم كامل', d:'إعادة الأسئلة الخاطئة فقط قبل الاختبار الكامل لرفع الثقة، ثم اختبار كامل لقياس التقدّم.' },
+    { t:'شهادة وتقرير أسبوعي', d:'شهادة بعد كل اختبار تمنح الطالبة دافعية، والتقرير الأسبوعي المطبوع بالأرقام يوثّق التحسّن للمعلم وولي الأمر.' }
+  ];
+  const weakFields = A.fields.filter(f => f.n && f.avgLast < 80);
+  const perStudent = A.rows.map(r => ({
+    name:r.st.name, acc:r.w.accuracy, att:r.w.inWeek.length, weak:r.w.weak,
+    note: !r.w.allAttempts ? 'لم تبدأ — تُسجَّل أولًا وتدخل في حصة منظّمة'
+      : (r.w.accuracy >= 80 ? 'متميزة — مهام إثراء وقيادة للمتقدمات' : 'تحتاج دعماً — خطة علاجية ومتابعة أسبوعية')
+  }));
+  return { from, to, steps, weakFields, perStudent, indicators:A.indicators, accuracy:T.accuracy,
+           target: Math.min(95, Math.max(60, T.accuracy + 10)), students:T.students };
+}
+function improvementHTML(){
+  const P = improvementPlan();
+  let h = '<h2>خطة التحسين المقترحة</h2>' +
+    '<p class="rep-note">الهدف المقترح: رفع متوسط الدقة من <b>' + P.accuracy + '%</b> إلى <b>' + P.target + '%</b> خلال أسبوعين، مع ' +
+    (P.weakFields.length ? 'تركيز على <b>' + P.weakFields.length + '</b> مجال يحتاج دعماً.' : 'الحفاظ على المستوى وتوسيع التدريب بأسئلة الرسوم.') + '</p>' +
+    '<h3>خطوات التحسين</h3><ol>' + P.steps.map(s => '<li><b>' + s.t + '</b> — ' + s.d + '</li>').join('') + '</ol>';
+  if(P.weakFields.length){
+    h += '<h3>المجالات المستهدفة</h3><table class="rep-table"><tr><th>المجال</th><th>الطالبات</th><th>متوسط آخر نتيجة</th><th>تحتاج دعماً</th><th>الإجراء المقترح</th></tr>' +
+      P.weakFields.map(f => {
+        const ff = BANK[f.sub].fields.find(x => x.code === f.code);
+        const ind = (ff && ff.ind && ff.ind[0]) ? ff.ind[0] : '';
+        return '<tr><td>' + f.code + ' — ' + f.title + '</td><td>' + f.n + '</td><td>' + f.avgLast + '%</td><td>' + f.weak + '</td>' +
+          '<td style="text-align:right">مراجعة المؤشر: ' + ind + ' — ثم مهمة مؤشر + إعادة الأسئلة الخاطئة + اختبار الرسوم</td></tr>';
+      }).join('') + '</table>';
+  }
+  if(P.indicators.length){
+    h += '<h3>المؤشرات الأكثر تعثراً (تشخيص دقيق)</h3><ul>' + P.indicators.map(x => '<li>' + x.code + ' — ' + x.text + ' (' + x.n + ' خطأ من ' + x.st + ' طالبة)</li>').join('') + '</ul>';
+  }
+  h += '<h3>متابعة فردية لكل طالبة</h3><table class="rep-table"><tr><th>الطالبة</th><th>محاولات</th><th>الدقة</th><th>التوصية</th></tr>' +
+    P.perStudent.map(p => '<tr><td style="text-align:right">' + esc(p.name) + '</td><td>' + p.att + '</td><td>' + (p.acc ? p.acc + '%' : '—') + '</td><td style="text-align:right">' + p.note + '</td></tr>').join('') + '</table>';
+  return h;
+}
+function printImprovement(){
+  const P = improvementPlan();
+  const html = '<div class="report"><div class="rep-head"><div><h1>خطة التحسين الأسبوعية</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>الفترة:</b> ' + P.from + ' — ' + P.to + '</div><div><b>الطالبات:</b> ' + P.students + '</div>' +
+    '<div><b>متوسط الدقة الحالي:</b> ' + P.accuracy + '%</div><div><b>الهدف:</b> ' + P.target + '%</div></div>' +
+    improvementHTML() +
+    '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div>' +
+    '<p class="rep-foot">خطة صادرة من منصة «تدريب نافس علوم» — إدارة تعليم جيزان — إعداد المعلمة نعمة هرشان.</p></div>';
+  $('#printArea').innerHTML = html;
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
+}
+
+/* ---------- فتح لوحة المعلمة ---------- */
+let teacherAuthed = false;
+function teacherLogin(){
+  if($('#teacherPin').value === pin){
+    teacherAuthed = true;
+    $('#teacherGate').hidden = true;
+    $('#teacherBody').hidden = false;
+    initTeacherDates();
+    renderTeacher();
+    toast('أهلاً بكِ أستاذة 👩‍🏫');
+  } else toast('الرمز غير صحيح ❌');
+}
+function openTeacher(){
+  $('#teacherPanel').hidden = false;
+  if(teacherAuthed){ $('#teacherGate').hidden = true; $('#teacherBody').hidden = false; initTeacherDates(); renderTeacher(); }
+  else { $('#teacherGate').hidden = false; $('#teacherBody').hidden = true; $('#teacherPin').value = ''; }
+}
+function initTeacherDates(){
+  const d = defaultWeek();
+  const f = $('#tpFrom'), t = $('#tpTo');
+  if(f && !f.value) f.value = d.from;
+  if(t && !t.value) t.value = d.to;
+}
+on('#teacherBtn', () => openTeacher());
+on('#tpClose', () => { $('#teacherPanel').hidden = true; });
+on('#teacherPinBtn', () => teacherLogin());
+on('#tpRefresh', () => { renderTeacher(); toast('تم تحديث التحليل ✅'); });
+on('#tpWeekly', () => printWeekly());
+on('#tpPrintAnalysis', () => printAnalysis());
+on('#tpPrintPlan', () => printImprovement());
+on('#tpExport', () => exportData());
+on('#tpImport', () => { const f = $('#tpImportFile'); if(f) f.click(); });
+const tpi = $('#tpImportFile');
+if(tpi) tpi.onchange = e => { if(e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; };
+const tpin = $('#teacherPin');
+if(tpin) tpin.addEventListener('keydown', e => { if(e.key === 'Enter') teacherLogin(); });
+
+
+/* ---------- خطط الطالبات وإشعارات المعلمة ---------- */
+const getPlans = () => gRaw('nafas_plans', []);
+const savePlans = (p) => sRaw('nafas_plans', p);
+const TRACK_LABEL = { '':'متوازنة', remedial:'تحتاج علاجي', enrichment:'إثرائي' };
+function studentPlanList(sid){ return getPlans().filter(p => p.sid === sid).slice().reverse(); }
+function unreadFor(sid){ return studentPlanList(sid).filter(p => !p.read).length; }
+function studentFields(sid){
+  const all = readUser(sid, 'attempts', []);
+  const prog = readUser(sid, 'progress', {});
+  const rows = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const fa = all.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
+    if(!fa.length) return;
+    const last = fa[fa.length - 1];
+    const p = prog[sub + '|' + f.code];
+    const inds = [];
+    (last.wrong || []).forEach(i => { const q = f.mcq[i]; if(q && q.k !== undefined && f.ind[q.k]) inds.push(f.ind[q.k]); });
+    rows.push({ sub, f, n:fa.length, last:last.score, best:((p && p.mcq && p.mcq.best) || 0), wrong:last.wrong || [], inds });
+  }));
+  return rows;
+}
+function buildRemedialPlan(sid){
+  const st = getRegistry().find(x => x.id === sid);
+  const rows = studentFields(sid).slice().sort((a, b) => a.last - b.last);
+  const weak = rows.filter(r => r.last < 80);
+  const all = readUser(sid, 'attempts', []);
+  const mcq = all.filter(a => a.mode === 'mcq');
+  const totQ = mcq.reduce((s, a) => s + (a.total || 0), 0);
+  const totC = mcq.reduce((s, a) => s + (a.correct || 0), 0);
+  const acc = pct(totC, totQ);
+  const target = Math.min(95, Math.max(60, acc + 10));
+  const w = weak[0];
+  let text = 'أهلاً ' + ((st && st.name) || '') + ' — هذه خطتك العلاجية المخصصة 💪\n\n';
+  text += 'الهدف: رفع متوسط درجتك من ' + acc + '% إلى ' + target + '% خلال أسبوعين.\n\n';
+  if(w){
+    text += '1) راجعي هذا المؤشر قبل الاختبار: ' + (w.inds[0] || w.f.ind.join(' / ')) + '\n';
+    text += '2) المجال ' + w.f.code + ' (' + w.f.title + '): أعيدي حل هذه الأسئلة الخاطئة: ' + (w.wrong.map(i => i + 1).join('، ') || '—') + '\n';
+    text += '3) أعيدي أسئلة الرسوم في هذا المجال لتثبيت الفهم البصري.\n';
+  } else {
+    text += '1) راجعي مؤشرات مجالك الأضعف في صفحة «إنجازي».\n';
+  }
+  text += '4) أكملي مهمة مؤشر واحدة يومياً (5 دقائق) مع تقويمك الذاتي.\n';
+  text += '5) أعيدي الاختبار في نهاية الأسبوع باستهداف +10 درجات، وسجّلي تقدّمك في لوحة ولي الأمر.\n\n';
+  text += 'أتمنى لكِ أسبوعاً موفقاً — معلمة: نعمة هرشان.';
+  return { title:'خطة علاجية', text };
+}
+function buildEnrichmentPlan(sid){
+  const st = getRegistry().find(x => x.id === sid);
+  const rows = studentFields(sid).slice().sort((a, b) => b.best - a.best);
+  const b = rows[0];
+  const all = readUser(sid, 'attempts', []);
+  const mcq = all.filter(a => a.mode === 'mcq');
+  const totQ = mcq.reduce((s, a) => s + (a.total || 0), 0);
+  const totC = mcq.reduce((s, a) => s + (a.correct || 0), 0);
+  const acc = pct(totC, totQ);
+  let text = 'أهلاً ' + ((st && st.name) || '') + ' — أنتِ متقدمة، وهذه خطتك الإثرائية 🌟\n\n';
+  text += 'مستواك الحالي: ' + acc + '% — ونريد أن نطوّرك إلى مستوى إثرائي متقدم (90% فأكثر).\n\n';
+  if(b){
+    text += '1) مجال تميّزك: ' + b.f.code + ' (' + b.f.title + ') — ابحثي عن فكرة جديدة فيه واكتبيها في خمسة أسطر.\n';
+    const extra = (b.f.tasks || []).slice(2, 5);
+    if(extra.length) text += '2) مهام إثرائية: ' + extra.map(t => t.q).join('  •  ') + '\n';
+  } else {
+    text += '1) ابدئي بتدريب منظّم في أي مجال لتسجيل إنجازك.\n';
+  }
+  text += '3) أعيدي مجموعة أسئلة الرسوم الأخيرة وحلّلي سبب كل إجابة.\n';
+  text += '4) أعيدي صياغة إجابات مهام المؤشر بكلماتك أنتِ ثم قارنيها بالإجابة النموذجية.\n';
+  text += '5) اشرحي لأحد زميلاتك مؤشراً واحداً بأسلوبك المبسّط.\n';
+  text += '6) اطلبي مني مهمة إثرائية إضافية عند إنهاء الخطة.\n\n';
+  text += 'متيازة! — معلمة: نعمة هرشان';
+  return { title:'خطة إثرائية', text };
+}
+function buildNotePlan(sid){
+  const st = getRegistry().find(x => x.id === sid);
+  return { title:'إشعار من المعلمة', text: 'أهلاً ' + ((st && st.name) || '') + ' — أحببتُ أن أبارك إنجازك، وواصلتِ التدريب بثقة ✨\nفقط أذكّركِ بالهدف الأسبوعي: 10 أسئلة يومياً + مهمة مؤشر.\nمعلمة: نعمة هرشان' };
+}
+function openSendPlan(sid, type){
+  const st = getRegistry().find(x => x.id === sid);
+  if(!st) return;
+  const plan = type === 'remedial' ? buildRemedialPlan(sid) : type === 'enrichment' ? buildEnrichmentPlan(sid) : buildNotePlan(sid);
+  const box = $('#modalBox');
+  box.innerHTML = '<div class="plan-send"><h3>📩 ' + plan.title + ' — ' + esc(st.name) + '</h3>' +
+    '<p class="muted">سيظهر النص في «لوحتي» عند الطالبة مع إشعار، ويمكنك تعديله قبل الإرسال.</p>' +
+    '<textarea id="planText" rows="11">' + esc(plan.text) + '</textarea>' +
+    '<div class="qfoot" style="justify-content:center"><button class="btn btn-primary" id="planSendBtn">إرسال إلى الطالبة</button>' +
+    '<button class="btn btn-ghost" id="planCancel">إلغاء</button></div></div>';
+  $('#modal').hidden = false;
+  $('#planCancel').onclick = () => { $('#modal').hidden = true; };
+  $('#planSendBtn').onclick = () => {
+    const txt = $('#planText').value.trim();
+    if(!txt){ toast('اكتبي نص الرسالة ✍️'); return; }
+    const list = getPlans();
+    list.push({ id:'p' + Date.now(), sid, type, title:plan.title, text:txt, date:today(),
+                time:new Date().toLocaleTimeString('ar-SA'), read:false });
+    savePlans(list);
+    if(type === 'remedial' || type === 'enrichment'){
+      const reg = getRegistry();
+      const s2 = reg.find(x => x.id === sid);
+      if(s2){ s2.track = type; saveRegistry(reg); }
+    }
+    $('#modal').hidden = true;
+    renderTeacher(); renderSent(); renderInbox();
+    toast('تم إرسال ' + plan.title + ' إلى ' + st.name + ' ✅');
+  };
+}
+function sendPlanToAll(type){
+  const reg = getRegistry();
+  if(!reg.length){ toast('لا توجد طالبات مسجلات'); return; }
+  const list = getPlans();
+  const now = Date.now();
+  reg.forEach((st, i) => {
+    const plan = type === 'improvement' ? { title:'خطة تحسين الصف', text:improvementPlanText() } : (type === 'remedial' ? buildRemedialPlan(st.id) : buildEnrichmentPlan(st.id));
+    list.push({ id:'p' + (now + i), sid:st.id, type, title:plan.title, text:plan.text, date:today(), time:new Date().toLocaleTimeString('ar-SA'), read:false });
+    if(type === 'remedial' || type === 'enrichment'){ st.track = type; }
+  });
+  savePlans(list);
+  saveRegistry(reg);
+  renderTeacher(); renderSent();
+  toast('تم إرسال الخطة إلى ' + reg.length + ' طالبة ✅');
+}
+function improvementPlanText(){
+  const P = improvementPlan();
+  let text = 'خطة تحسين هذا الأسبوع 🎯\n\nالهدف: رفع متوسط الدقة إلى ' + P.target + '% خلال أسبوعين.\n\nخطوات التحسين:\n';
+  P.steps.forEach((s, i) => { text += (i + 1) + ') ' + s.t + ' — ' + s.d + '\n'; });
+  if(P.weakFields.length){
+    text += '\nالمجالات المستهدفة:\n';
+    P.weakFields.forEach(f => { text += '• ' + f.code + ' — ' + f.title + ' (متوسط ' + f.avgLast + '%)\n'; });
+  }
+  text += '\nمعلمة: نعمة هرشان';
+  return text;
+}
+function markPlanRead(id){
+  const l = getPlans();
+  const p = l.find(x => x.id === id);
+  if(p){ p.read = true; savePlans(l); }
+}
+function renderInbox(){
+  const box = $('#inboxList');
+  if(!box) return;
+  const list = studentPlanList(U.id);
+  const st = getRegistry().find(x => x.id === U.id);
+  const track = st ? (st.track || '') : '';
+  const head = st ? '<p class="muted" style="margin:0 0 8px">مسارك الحالي: <b>' + (TRACK_LABEL[track] || 'متوازنة') + '</b></p>' : '';
+  box.innerHTML = head + (list.length ? list.map(p =>
+    '<div class="plan-msg ' + p.type + '"><div class="pm-head"><b>' + esc(p.title) + '</b><small>' + p.date + ' • ' + (p.time || '') + '</small></div>' +
+    '<div class="pm-text">' + esc(p.text) + '</div>' +
+    '<div class="pm-foot">' + (p.read ? '<span class="muted">✅ تمت القراءة</span>'
+      : '<button class="btn btn-soft btn-sm" data-read="' + p.id + '">تحديد كمقروء</button>') + '</div></div>').join('')
+    : '<div class="empty">لا توجد رسائل بعد — ستظهر هنا خطتك أو إشعار معلمة فور إرساله.</div>');
+  box.querySelectorAll('[data-read]').forEach(b => b.onclick = () => { markPlanRead(b.dataset.read); renderInbox(); renderBell(); });
+}
+function renderBell(){
+  const n = unreadFor(U.id);
+  const dot = $('#bellDot');
+  if(dot){ dot.hidden = n === 0; dot.textContent = n; }
+  const btn = $('#bellBtn');
+  if(btn) btn.classList.toggle('has', n > 0);
+}
+function openInbox(){
+  const list = studentPlanList(U.id);
+  const box = $('#modalBox');
+  box.innerHTML = '<h3>📬 لوحتي — الخطة والإشعارات</h3>' +
+    (list.length ? list.map(p => '<div class="plan-msg ' + p.type + '"><div class="pm-head"><b>' + esc(p.title) + '</b><small>' + p.date + '</small></div><div class="pm-text">' + esc(p.text) + '</div></div>').join('')
+      : '<div class="empty">لا توجد رسائل</div>') +
+    '<div class="qfoot" style="justify-content:center"><button class="btn btn-ghost" id="inboxClose">إغلاق</button></div>';
+  $('#modal').hidden = false;
+  $('#inboxClose').onclick = () => { $('#modal').hidden = true; };
+  const l = getPlans();
+  let ch = false;
+  l.forEach(p => { if(p.sid === U.id && !p.read){ p.read = true; ch = true; } });
+  if(ch){ savePlans(l); renderBell(); renderInbox(); }
+}
+function renderSent(){
+  const box = $('#tpSent');
+  if(!box) return;
+  const list = getPlans().slice().reverse();
+  const reg = getRegistry();
+  box.innerHTML = list.length ? list.map(p => {
+    const st = reg.find(x => x.id === p.sid);
+    return '<div class="review-row"><div class="rq">' + esc(p.title) + ' — ' + esc(st ? st.name : '—') + '</div>' +
+      '<div class="rr">' + p.date + ' • ' + (p.time || '') + (p.read ? ' • تمت القراءة' : ' • لم تُقرأ بعد') +
+      ' <button class="btn btn-ghost btn-sm" data-delsent="' + p.id + '">حذف</button></div></div>';
+  }).join('') : '<div class="empty">لم تُرسل أي خطة بعد.</div>';
+  box.querySelectorAll('[data-delsent]').forEach(b => b.onclick = () => {
+    savePlans(getPlans().filter(p => p.id !== b.dataset.delsent));
+    renderSent(); renderInbox();
+  });
+}
+on('#bellBtn', () => openInbox());
+on('#tpSendAllImprove', () => sendPlanToAll('improvement'));
+on('#tpSendAllRemedial', () => sendPlanToAll('remedial'));
+on('#tpSendAllEnrich', () => sendPlanToAll('enrichment'));
+
 
 /* ---------- الوضع الليلي ---------- */
 $('#themeBtn').onclick = () => {
