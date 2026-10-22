@@ -241,6 +241,14 @@ function renderHub(){
     });
   }
 
+  // الأوسمة اليومية
+  const tm = $('#todayMedals');
+  if(tm){
+    const dm = dailyMedalsFor(U.id);
+    tm.innerHTML = dm.length ? dm.map(x => '<div class="medal-card"><div class="mc-i">' + x.i + '</div><b>' + x.n + '</b><small>' + x.d + '</small></div>').join('')
+      : '<div class="empty">لم تحصد وسام اليوم بعد — ابدئي باختبار لتحصد أول وسام 🌅</div>';
+  }
+
   // الأوسمة
   const badges = $('#badgesRow');
   const earned = medalsFor(U.id);
@@ -976,6 +984,12 @@ function renderProgress(){
     mh.innerHTML = mine.length ? mine.map(x => '<div class="medal-card"><div class="mc-i">' + x.i + '</div><b>' + x.n + '</b><small>' + x.d + '</small></div>').join('')
       : '<div class="empty">لم تكتسبي وساماً بعد — ابدئي باختبار لتحصل على أول وسام 🌱</div>';
   }
+  const mth = $('#myTodayMedals');
+  if(mth){
+    const dm = dailyMedalsFor(U.id);
+    mth.innerHTML = dm.length ? dm.map(x => '<div class="medal-card today"><div class="mc-i">' + x.i + '</div><b>' + x.n + '</b><small>' + x.d + '</small></div>').join('')
+      : '<div class="empty">لم تحصد وسام اليوم بعد — ابدئي باختبار لتحصد أول وسام 🌅</div>';
+  }
 
   const planHost = $('#planArea');
   if(planHost){
@@ -1205,6 +1219,13 @@ function buildWeeklyReport(fromIn, toIn){
       return '<table class="rep-table"><tr><th>المركز</th><th>الطالبة</th><th>المدرسة</th><th>الدقة</th><th>المحاولات</th><th>الأوسمة</th></tr>' +
         top.map((r, i) => '<tr><td>' + mk[i] + '</td><td style="text-align:right">' + esc(r.st.name) + '</td><td>' + esc(r.st.school || '—') + '</td>' +
           '<td>' + r.R.acc + '%</td><td>' + r.R.all.length + '</td><td>' + medalIcons(r.medals) + '</td></tr>').join('') + '</table>';
+    })() +
+    '<h2>🌅 نجوم اليوم (تتجدّد يومياً)</h2>' + (function(){
+      const rows = dailyRanking().filter(r => r.medals.length).slice(0, 10);
+      if(!rows.length) return '<p class="rep-note">لا توجد إنجازات اليوم بعد.</p>';
+      return '<table class="rep-table"><tr><th>الطالبة</th><th>دخول اليوم</th><th>اختبارات اليوم</th><th>أفضل نتيجة</th><th>أوسمة اليوم</th></tr>' +
+        rows.map(r => '<tr><td style="text-align:right">' + esc(r.st.name) + '</td><td>' + (r.D.logged ? r.D.loginsToday + ' جلسة' : '—') + '</td>' +
+          '<td>' + (r.D.mcqCount || '—') + '</td><td>' + (r.D.best ? r.D.best + '%' : '—') + '</td><td>' + medalIcons(r.medals) + '</td></tr>').join('') + '</table>';
     })();
   const weakRows = [];
   rows.forEach(r => r.w.weak.forEach(wf => weakRows.push({ name:r.st.name, wf })));
@@ -1448,7 +1469,7 @@ function renderTeacher(){
       '<td>' + (r.st.lastSeen ? new Date(r.st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</td>' +
       '<td>' + r.w.inWeek.length + '</td><td>' + (r.w.mcqCount ? r.w.accuracy + '%' : '—') + '</td>' +
       '<td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + r.w.allAttempts + '</td><td>' + weekStatus(r.w) + '</td>' +
-      '<td>' + medalIcons(medalsFor(r.st.id)) + '</td>' +
+      '<td>' + medalIcons(dailyMedalsFor(r.st.id)) + '</td>' +
       '<td class="tp-send"><select data-track="' + r.st.id + '"><option value="">متوازنة</option>' +
       '<option value="remedial"' + (r.st.track === 'remedial' ? ' selected' : '') + '>تحتاج علاجي</option>' +
       '<option value="enrichment"' + (r.st.track === 'enrichment' ? ' selected' : '') + '>إثرائي</option></select>' +
@@ -1470,6 +1491,7 @@ function renderTeacher(){
   $('#tpStudents').querySelectorAll('[data-req]').forEach(b => b.onclick = () => requestStudentUpdate(b.dataset.req));
   renderSent();
   renderTopFive();
+  renderTodayMedals();
 
   renderStudentDetail(A.rows.length ? A.rows[0].st.id : null, A);
   const planHost = $('#tpPlan');
@@ -2368,6 +2390,70 @@ function renderTopFive(){
     '<div class="pod-school">' + esc(r.st.school || '—') + '</div>' +
     '<div class="pod-stats"><span>' + r.R.acc + '٪</span><span>' + r.R.all.length + ' محاولة</span><span>' + r.medals.length + ' وسام</span></div>' +
     '<div class="pod-medals">' + medalIcons(r.medals) + '</div></div>').join('') + '</div>';
+}
+
+/* ---------- أوسمة اليوم (تتحدث يومياً) ---------- */
+function weekStart(){
+  const d = new Date();
+  const day = d.getDay();
+  const diff = (day + 6) % 7; // بداية الأسبوع: السبت
+  d.setDate(d.getDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
+function dailyData(id){
+  const all = readUser(id, 'attempts', []);
+  const st = getRegistry().find(x => x.id === id) || { logins:{} };
+  const d = today();
+  const todays = all.filter(a => a.date === d);
+  const mcq = todays.filter(a => a.mode === 'mcq');
+  const totQ = mcq.reduce((s, a) => s + (a.total || 0), 0);
+  const totC = mcq.reduce((s, a) => s + (a.correct || 0), 0);
+  const ws = weekStart();
+  const weekDays = [...new Set(all.filter(a => a.date >= ws).map(a => a.date))].length;
+  return {
+    todays, mcqCount:mcq.length, acc: pct(totC, totQ),
+    best: todays.reduce((m, a) => Math.max(m, a.score || 0), 0),
+    logged: !!(st.logins && st.logins[d]),
+    loginsToday: (st.logins && st.logins[d]) || 0,
+    streak: studentStreak(id), weekDays,
+    figsToday: todays.filter(a => a.mode === 'fig').length,
+    tasksToday: todays.filter(a => a.mode === 'tasks').length
+  };
+}
+function dailyMedalsFor(id){
+  const D = dailyData(id);
+  const m = [];
+  if(D.logged) m.push({ i:'🌅', n:'حاضرة اليوم', d:'سجّلت دخولها اليوم' });
+  if(D.loginsToday > 1) m.push({ i:'🔁', n:'مثابرة اليوم', d:D.loginsToday + ' جلسات اليوم' });
+  if(D.mcqCount) m.push({ i:'⚡', n:'أنجزت اختباراً', d:D.mcqCount + ' اختبار اليوم' });
+  if(D.best >= 100) m.push({ i:'💯', n:'القمة اليوم', d:'درجة كاملة اليوم' });
+  else if(D.best >= 90) m.push({ i:'🎯', n:'متميّزة اليوم', d:'أفضل نتيجة اليوم ' + D.best + '٪' });
+  else if(D.best >= 80) m.push({ i:'📗', n:'جيدة اليوم', d:'أفضل نتيجة اليوم ' + D.best + '٪' });
+  else if(D.best >= 60) m.push({ i:'🌱', n:'تحتاج تثبيتاً', d:'أفضل نتيجة اليوم ' + D.best + '٪ — راجعي الخطة' });
+  if(D.figsToday) m.push({ i:'🖼️', n:'رسوم اليوم', d:'مجموعة رسوم اليوم' });
+  if(D.tasksToday) m.push({ i:'✍️', n:'مهام اليوم', d:D.tasksToday + ' مهمة مؤشر' });
+  if(D.streak >= 3) m.push({ i:'🔥', n:'مواظبة ' + D.streak + ' أيام', d:'تدريب متواصل' });
+  if(D.weekDays >= 5) m.push({ i:'📆', n:'أسبوع كامل', d:D.weekDays + ' أيام هذا الأسبوع' });
+  return m;
+}
+function dailyRanking(){
+  return getRegistry().map(st => {
+    const D = dailyData(st.id);
+    const medals = dailyMedalsFor(st.id);
+    const score = D.acc + medals.length * 6 + D.mcqCount * 3 + (D.logged ? 5 : 0);
+    return { st, D, medals, score };
+  }).sort((a, b) => b.score - a.score);
+}
+function renderTodayMedals(){
+  const host = $('#tpToday');
+  if(!host) return;
+  const rows = dailyRanking().filter(r => r.medals.length);
+  host.innerHTML = rows.length ? '<div class="tp-table"><table><tr><th>الطالبة</th><th>دخول اليوم</th><th>اختبارات اليوم</th><th>أفضل نتيجة اليوم</th><th>أوسمة اليوم</th></tr>' +
+    rows.map(r => '<tr><td><b>' + esc(r.st.name) + '</b></td>' +
+      '<td>' + (r.D.logged ? '✅ ' + r.D.loginsToday + ' جلسة' : '—') + '</td>' +
+      '<td>' + (r.D.mcqCount || '—') + '</td><td>' + (r.D.best ? r.D.best + '٪' : '—') + '</td>' +
+      '<td>' + medalIcons(r.medals) + '</td></tr>').join('') + '</table></div>'
+    : '<div class="empty">لا توجد أوسمة اليوم بعد — تتجدّد الأوسمة تلقائياً كل يوم بحسب دخول الطالبات وإنجازهن 🌅</div>';
 }
 
 /* ---------- الوضع الليلي ---------- */

@@ -491,3 +491,6 @@ body.dark .notice{background:#241d3d;color:#ddd6fe}
 .pod-stats{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:6px 0;font-size:12px;color:var(--violet-d);font-weight:700}
 .pod-medals{min-height:30px}
 @media(max-width:760px){.podium{grid-template-columns:repeat(2,1fr)}.podium .pod:last-child{grid-column:1/-1}}
+
+.medal-card.today{border-color:var(--amber);background:linear-gradient(180deg,var(--amber-l),var(--bg2))}
+.medal-card.today .mc-i{filter:drop-shadow(0 2px 6px rgba(217,119,6,.35))}
