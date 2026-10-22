@@ -2071,7 +2071,7 @@ function renderSent(){
   box.innerHTML = list.length ? list.map(p => {
     const st = reg.find(x => x.id === p.sid);
     return '<div class="review-row"><div class="rq">' + esc(p.title) + ' — ' + esc(st ? st.name : (p.name || '—')) + '</div>' +
-      '<div class="rr">' + p.date + ' • ' + (p.time || '') + ' ' + (p.read ? '<b style="color:#15803d">✅ تمت قراءتها</b>' : '<b style="color:#b45309">⏳ لم تُقرأ بعد</b>') +
+      '<div class="rr">' + p.date + ' • ' + (p.time || '') + ' ' + (p.read ? '<b style="color:#15803d">✅ تمت قراءتها</b>' + (p.readAt ? ' <span class="muted">' + new Date(p.readAt).toLocaleTimeString('ar-SA') + '</span>' : '') : '<b style="color:#b45309">⏳ لم تُقرأ بعد</b>') +
       ' <button class="btn btn-ghost btn-sm" data-delsent="' + p.id + '">حذف</button></div></div>';
   }).join('') : '<div class="empty">لم تُرسل أي خطة بعد.</div>';
   box.querySelectorAll('[data-delsent]').forEach(b => b.onclick = () => {
@@ -2427,6 +2427,28 @@ function studentStreak(id){
   }
   return s;
 }
+function maxStreak(id){
+  const all = readUser(id, 'attempts', []);
+  const st = getRegistry().find(x => x.id === id) || { logins:{} };
+  const days = [...new Set(all.map(a => a.date).concat(Object.keys(st.logins || {})))].filter(Boolean).sort();
+  let best = 0, cur = 0, prev = null;
+  days.forEach(d => {
+    if(prev && daysBetween(prev, d) === 1) cur++; else cur = 1;
+    if(cur > best) best = cur;
+    prev = d;
+  });
+  return best;
+}
+function bestAvgEver(id){
+  const mcq = readUser(id, 'attempts', []).filter(a => a.mode === 'mcq');
+  let c = 0, t = 0, best = 0;
+  mcq.forEach(a => {
+    c += a.correct || 0; t += a.total || 0;
+    const av = t ? Math.round(c / t * 100) : 0;
+    if(av > best) best = av;
+  });
+  return best;
+}
 function medalsFor(id){
   const all = readUser(id, 'attempts', []);
   const prog = readUser(id, 'progress', {});
@@ -2434,14 +2456,15 @@ function medalsFor(id){
   const totQ = mcq.reduce((s, a) => s + (a.total || 0), 0);
   const totC = mcq.reduce((s, a) => s + (a.correct || 0), 0);
   const acc = pct(totC, totQ);
+  const bestAv = Math.max(acc, bestAvgEver(id));
   const tasksDone = Object.keys(prog).reduce((s, k) => s + ((prog[k].tasks && prog[k].tasks.done) || 0), 0);
-  const streak = studentStreak(id);
+  const streak = maxStreak(id);
   const m = [];
   if(all.length) m.push({ i:'🌱', n:'البداية', d:'أول إنجاز منجز' });
   if(all.length >= 5) m.push({ i:'📚', n:'المجتهدة', d:'٥ محاولات أو أكثر' });
   if(all.some(a => a.score === 100)) m.push({ i:'💯', n:'التفوق', d:'اختبار بدرجة كاملة' });
   if(all.some(a => a.score >= 90)) m.push({ i:'🎯', n:'الدقة العالية', d:'٩٠٪ فأكثر في اختبار' });
-  if(mcq.length >= 2 && acc >= 80) m.push({ i:'🏅', n:'المتمكّنة', d:'متوسط دقة ' + acc + '٪' });
+  if(mcq.length >= 2 && bestAv >= 80) m.push({ i:'🏅', n:'المتمكّنة', d:'أفضل متوسط دقة ' + bestAv + '٪' });
   if(all.some(a => a.mode === 'fig')) m.push({ i:'🖼️', n:'قارئة الأشكال', d:'أنجزتِ أسئلة الرسوم' });
   if(tasksDone >= 5) m.push({ i:'✍️', n:'المخطّطة', d:'٥ مهام مؤشر' });
   if(tasksDone >= 15) m.push({ i:'🧠', n:'الشارحة', d:'١٥ مهمة مؤشر' });
