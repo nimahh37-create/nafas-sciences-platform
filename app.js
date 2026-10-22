@@ -1057,8 +1057,17 @@ function renderParent(){
     : '<div class="empty">لا توجد محاولات بعد.</div>';
 
   $$('.goal').forEach(b => b.classList.toggle('active', +b.dataset.g === goal));
-  initWeekInputs();
-  renderWeekly();
+  const sid = U.id;
+  const pm = $('#parentMedals');
+  if(pm) pm.innerHTML = '<span class="muted">أوسمة اليوم:</span> ' + medalIcons(dailyMedalsFor(sid)) + ' <span style="width:12px"></span><span class="muted">أوسمة الإنجاز:</span> ' + medalIcons(medalsFor(sid));
+  const ph = $('#parentMedalHistory');
+  if(ph) ph.innerHTML = medalHistoryHTML(sid, 14);
+  const pp = $('#parentPlans');
+  if(pp){
+    const list = studentPlanList(sid, profile.name);
+    pp.innerHTML = list.length ? list.map(p => '<div class="review-row"><div class="rq">' + esc(p.title) + '</div><div class="rr">' + p.date + ' • ' + (p.read ? '<b style="color:#15803d">✅ قرأتها ابنتك</b>' : '<b style="color:#b45309">⏳ لم تُقرأ بعد</b>') + '</div></div>').join('')
+      : '<div class="empty">لا توجد رسائل أو خطط من المعلمة بعد.</div>';
+  }
 }
 $$('.goal').forEach(b => b.onclick = () => { goal = +b.dataset.g; s(K.goal, goal); renderParent(); toast('تم ضبط الهدف اليومي: ' + goal + ' أسئلة'); });
 $$('#msgChips .chip').forEach(c => c.onclick = () => { $('#parentMsgText').value = c.textContent; });
@@ -1070,22 +1079,11 @@ $('#sendMsgBtn').onclick = () => {
   $('#parentMsgStatus').innerHTML = '<div class="notice">✅ أُرسلت الرسالة وستظهر لابنتك في الصفحة الرئيسية.</div>';
   renderHub();
 };
-$('#printReport').onclick = () => doPrint();
-$('#printClassReport').onclick = () => printWeekly();
-$('#repBtn').onclick = () => doPrint();
+$('#printReport').onclick = () => printStudentReport(U.id);
+const repb = $('#repBtn'); if(repb) repb.onclick = () => doPrint();
 $('#changePin').onclick = () => {
   const v = prompt('اكتبي الرمز الجديد (4 أرقام):');
   if(v && v.length >= 4){ pin = v; s(K.pin, pin); toast('تم تغيير الرمز ✅'); }
-};
-$('#uploadBtn').onclick = () => {
-  const st = $('#upStudent').value.trim(), sc = $('#upSchool').value.trim(),
-        ex = $('#upExam').value.trim(), sc2 = parseInt($('#upScore').value, 10);
-  if(!st || !sc || !ex || isNaN(sc2)){ toast('أكملي بيانات الرفع ⬆️'); return; }
-  const ups = gRaw('nafas_uploads', []);
-  ups.push({ student:st, school:sc, exam:ex, score:sc2, date:today(), time:new Date().toLocaleTimeString('ar-SA') });
-  sRaw('nafas_uploads', ups);
-  $('#uploadStatus').innerHTML = '<div class="notice">✅ تم رفع تقدّم <b>' + st + '</b> (' + sc2 + '%) إلى لوحة صاحب المبادرة.</div>';
-  renderParent(); renderHub();
 };
 function renderUploaded(){
   const box = $('#uploadedList');
@@ -1764,21 +1762,23 @@ function printImprovement(){
 }
 
 /* ---------- فتح لوحة المعلمة ---------- */
+const TEACHER_PIN = 'NIMAH';
+const isTeacherPin = (v) => String(v == null ? '' : v).trim().toUpperCase() === TEACHER_PIN;
 let teacherAuthed = false;
 function teacherLogin(){
-  if($('#teacherPin').value === pin){
+  if(isTeacherPin($('#teacherPin').value)){
     teacherAuthed = true;
     $('#teacherGate').hidden = true;
     $('#teacherBody').hidden = false;
     initTeacherDates();
     renderTeacher();
-    syncPull().then(() => { if(!$('#teacherPanel').hidden) renderTeacher(); });
+    syncPull(true).then(() => { if(!$('#teacherPanel').hidden) renderTeacher(); });
     toast('أهلاً بكِ أستاذة 👩‍🏫');
   } else toast('الرمز غير صحيح ❌');
 }
 function openTeacher(){
   $('#teacherPanel').hidden = false;
-  if(teacherAuthed){ $('#teacherGate').hidden = true; $('#teacherBody').hidden = false; initTeacherDates(); renderTeacher(); syncPull().then(() => renderTeacher()); }
+  if(teacherAuthed){ $('#teacherGate').hidden = true; $('#teacherBody').hidden = false; initTeacherDates(); renderTeacher(); syncPull(true).then(() => renderTeacher()); }
   else { $('#teacherGate').hidden = false; $('#teacherBody').hidden = true; $('#teacherPin').value = ''; }
 }
 function initTeacherDates(){
@@ -2086,31 +2086,63 @@ on('#tpSendAllEnrich', () => sendPlanToAll('enrichment'));
 
 
 /* ---------- اختيار الدور في شاشة الدخول ---------- */
+function fillParentStudents(){
+  const sel = $('#lgParentStudent');
+  if(!sel) return;
+  const reg = getRegistry();
+  sel.innerHTML = reg.length
+    ? reg.map(s => '<option value="' + s.id + '">' + esc(s.name) + (s.school ? ' — ' + esc(s.school) : '') + '</option>').join('')
+    : '<option value="">لا توجد طالبات مسجلات على هذا الجهاز</option>';
+}
 function showLoginRole(role){
-  const roles = $('#lgRoles'), sv = $('#lgStudentView'), tv = $('#lgTeacherView'), back = $('#lgBackRoles');
+  const roles = $('#lgRoles'), sv = $('#lgStudentView'), tv = $('#lgTeacherView'), pv = $('#lgParentView'), back = $('#lgBackRoles');
   const title = $('#lgTitle'), sub = $('#lgSubtitle');
   const hide = (e) => { if(e) e.hidden = true; };
   const show = (e) => { if(e) e.hidden = false; };
   if(role === 'student'){
-    hide(roles); show(sv); hide(tv); show(back);
+    hide(roles); show(sv); hide(tv); hide(pv); show(back);
     if(title) title.textContent = 'دخول الطالبة 👩‍🎓';
     if(sub) sub.textContent = 'اختاري اسمك للمتابعة، أو سجّلي حساباً جديداً.';
   } else if(role === 'teacher'){
-    hide(roles); hide(sv); show(tv); show(back);
+    hide(roles); hide(sv); show(tv); hide(pv); show(back);
     if(title) title.textContent = 'دخول المعلمة 🎓';
     if(sub) sub.textContent = 'أدخلي الرمز السري للمعلمة للوصول إلى لوحة المتابعة والتحليل.';
     const p = $('#lgTeacherPin');
     if(p){ p.value = ''; setTimeout(() => { try { p.focus(); } catch(e){} }, 80); }
+  } else if(role === 'parent'){
+    hide(roles); hide(sv); hide(tv); show(pv); show(back);
+    fillParentStudents();
+    if(title) title.textContent = 'دخول ولي الأمر 👨‍👩‍👧';
+    if(sub) sub.textContent = 'متابعة ابنتك فقط: تقدّمها ودرجاتها وأوسمتها وتقاريرها.';
+    const pp = $('#lgParentPin'); if(pp){ pp.value = ''; }
   } else {
-    show(roles); hide(sv); hide(tv); hide(back);
+    show(roles); hide(sv); hide(tv); hide(pv); hide(back);
     if(title) title.textContent = 'من أنتِ؟ 👋';
     if(sub) sub.textContent = 'اختاري طريقة الدخول — يمكنك تغييرها في أي وقت.';
   }
 }
+function parentGateLogin(){
+  const sel = $('#lgParentStudent');
+  const sid = sel ? sel.value : '';
+  const st = getRegistry().find(x => x.id === sid);
+  const v = (($('#lgParentPin') || {}).value || '').trim();
+  const pv = String(gRaw('nafes_pin', APP.pin));
+  if(!st){ toast('اختاري اسم ابنتك أولاً'); return; }
+  if(v !== pv){ toast('رمز ولي الأمر غير صحيح ❌'); return; }
+  U.id = sid;
+  localStorage.setItem('nafas_active', sid);
+  loadUserData();
+  $('#loginGate').hidden = true;
+  $('#parentGate').hidden = true;
+  $('#parentBody').hidden = false;
+  go('parent');
+  renderParent();
+  toast('أهلاً بولي الأمر — متابعة ' + st.name);
+}
 function teacherGateLogin(){
   const inp = $('#lgTeacherPin');
   const v = inp ? inp.value.trim() : '';
-  if(v === pin){
+  if(isTeacherPin(v)){
     teacherAuthed = true;
     $('#loginGate').hidden = true;
     toast('أهلاً بكِ أستاذة 👩‍🏫');
@@ -2122,8 +2154,12 @@ function teacherGateLogin(){
 }
 on('#roleStudent', () => showLoginRole('student'));
 on('#roleTeacher', () => showLoginRole('teacher'));
+on('#roleParent', () => showLoginRole('parent'));
+on('#lgParentGo', () => parentGateLogin());
 on('#lgBackRoles', () => showLoginRole(''));
 on('#lgTeacherGo', () => teacherGateLogin());
+const lpp = $('#lgParentPin');
+if(lpp) lpp.addEventListener('keydown', e => { if(e.key === 'Enter') parentGateLogin(); });
 const tpAll = $('#tpAllTime');
 if(tpAll) tpAll.onchange = () => { if(!tpAll.checked){ const d = defaultWeek(); const f = $('#tpFrom'), t2 = $('#tpTo'); if(f) f.value = d.from; if(t2) t2.value = d.to; } renderTeacher(); };
 const lgp = $('#lgTeacherPin');
@@ -2155,7 +2191,7 @@ function exportStudentData(){
 }
 /* ---------- المزامنة السحابية: ظهور نتائج الطالبات مباشرة عند المعلمة ---------- */
 const SYNC_DEFAULT_CODE = 'nafas-jizan-2026';
-const SYNC = { last: 0, pulling: false, blockUntil: 0 };
+const SYNC = { last: 0, pulling: false, blockUntil: 0, lastFull: 0 };
 function syncCode(){ return (gRaw('nafas_sync_code', '') || SYNC_DEFAULT_CODE); }
 function saveSyncCode(c){ sRaw('nafas_sync_code', c || SYNC_DEFAULT_CODE); }
 function syncEnabled(){ return gRaw('nafas_sync_on', true) !== false; }
@@ -2239,6 +2275,22 @@ function syncPushSoon(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(() => { syncPushTimer = null; syncPush(); }, 3000);
 }
+function syncPushAll(){
+  if(!syncEnabled()){ toast('المزامنة غير مفعّلة'); return; }
+  if(!U.id){ toast('سجّلي دخولك أولاً'); return; }
+  const rec = studentCompact();
+  if(!rec){ toast('لا توجد بيانات لإرسالها'); return; }
+  const att = readUser(U.id, 'attempts', []).map(a => ({ mode:a.mode, subject:a.subject, field:a.field, title:a.title,
+    score:a.score, correct:a.correct, total:a.total, answered:a.answered || 0, hints:a.hints || 0, retry:!!a.retry,
+    wrong:(a.wrong || []).slice(0, 10), date:a.date, time:a.time || '' }));
+  if(!att.length){ toast('لا توجد محاولات لإرسالها بعد'); return; }
+  const chunks = [];
+  for(let i = 0; i < att.length; i += 6) chunks.push(att.slice(i, i + 6));
+  chunks.forEach((items, i) => setTimeout(() => {
+    postMsg(JSON.stringify({ t:'rec', rec: Object.assign({}, rec, { att: items }) }), 'rec');
+  }, i * 2600));
+  toast('جارٍ إرسال كل إنجازاتك (' + att.length + ' محاولة) إلى المعلمة… 📤');
+}
 function attKey(a){
   return [a.mode, a.subject, a.field, a.date, a.time || '', a.score, a.correct, a.total, a.answered || 0].join('|');
 }
@@ -2266,11 +2318,30 @@ function mergeProgressData(local, incoming){
   });
   return out;
 }
+function normName(s){ return String(s || '').toLowerCase().replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\s+/g, ' ').trim(); }
+function resolveSyncId(id, name, school){
+  const al = gRaw('nafas_sync_alias', {});
+  if(al[id]) return al[id];
+  const reg = getRegistry();
+  if(reg.some(x => x.id === id)) return id;
+  const nm = normName(name);
+  if(nm){
+    let twins = reg.filter(x => normName(x.name) === nm && x.id !== id);
+    if(school) twins = twins.filter(x => !x.school || normName(x.school) === normName(school));
+    if(twins.length === 1){
+      al[id] = twins[0].id;
+      sRaw('nafas_sync_alias', al);
+      return twins[0].id;
+    }
+  }
+  return id;
+}
 function materializeSync(id){
   const cache = gRaw('nafas_sync_cache', {});
   const c = cache[id];
   if(!c || !c.rec) return false;
   const rec = c.rec;
+  id = resolveSyncId(id, rec.name, rec.school);
   const reg = getRegistry();
   let st = reg.find(x => x.id === id);
   if(!st){
@@ -2316,11 +2387,12 @@ function materializeSync(id){
   }
   return true;
 }
-function syncPull(){
+function syncPull(full){
   if(!syncEnabled() || SYNC.pulling) return Promise.resolve(0);
   if(SYNC.blockUntil && Date.now() < SYNC.blockUntil) return Promise.resolve(0);
   SYNC.pulling = true;
-  const since = Math.floor((gRaw('nafas_sync_since', 0) || (Date.now() - 36 * 3600 * 1000)) / 1000);
+  if(full) SYNC.lastFull = Date.now();
+  const since = full ? 'all' : Math.floor((gRaw('nafas_sync_since', 0) || (Date.now() - 36 * 3600 * 1000)) / 1000);
   return fetch(syncUrl('/json?poll=1&since=' + since), { headers:{ 'Accept':'application/json' } })
     .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
     .then(txt => {
@@ -2384,7 +2456,8 @@ function startSyncLoop(){
     syncFlushQueue();
     const teacherOpen = $('#teacherPanel') && !$('#teacherPanel').hidden;
     if(teacherOpen){
-      syncPull().then(() => { if(typeof renderTeacher === 'function') renderTeacher(); });
+      const full = !SYNC.lastFull || (Date.now() - SYNC.lastFull > 300000);
+      syncPull(full).then(() => { if(typeof renderTeacher === 'function') renderTeacher(); });
     } else if(U.id){
       syncPull().then(() => { renderInbox(); renderBell(); });
     }
@@ -2394,7 +2467,7 @@ function startSyncLoop(){
 }
 let syncKeepTimer = null;
 let syncTimer = null;
-on('#syncNow', () => { syncPull().then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تم تحديث النتائج من الطالبات ✅' : 'لا جديد الآن'); }); });
+on('#syncNow', () => { syncPull(true).then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تمت استعادة آخر التحديثات والنتائج ✅' : 'لا جديد الآن'); }); });
 on('#syncToggle', () => { setSyncEnabled(!syncEnabled()); renderTeacher(); toast(syncEnabled() ? 'تم تفعيل المزامنة ✅' : 'تم إيقاف المزامنة'); });
 on('#syncCopy', () => {
   const link = location.origin + location.pathname + '?code=' + encodeURIComponent(syncCode());
@@ -2405,6 +2478,7 @@ on('#syncCopy', () => {
   ta.remove();
 });
 on('#syncStopMine', () => { setSyncEnabled(!syncEnabled()); renderHub(); toast(syncEnabled() ? 'تم إرسال تقدمك للمعلمة ✅' : 'تم إيقاف الإرسال للمعلمة'); });
+on('#syncSendAll', () => syncPushAll());
 on('#syncSaveCode', () => {
   const v = ($('#syncCodeInput') ? $('#syncCodeInput').value : '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
   if(!v){ toast('اكتبي رمز صف صحيحاً'); return; }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css?v=31">
+<link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
 
@@ -97,6 +97,11 @@
         <b>معلمة</b>
         <small>لوحة المتابعة والتحليل البياني وطباعة التقارير</small>
       </button>
+      <button class="lg-role parent" id="roleParent">
+        <span class="lg-rico">👨‍👩‍👧</span>
+        <b>ولي الأمر</b>
+        <small>متابعة ابنتي فقط: تقدّمها ودرجاتها وأوسمتها وتقاريرها</small>
+      </button>
     </div>
 
     <div id="lgStudentView" hidden>
@@ -114,10 +119,20 @@
     <div id="lgTeacherView" hidden>
       <p class="muted">أدخلي الرمز السري للمعلمة للوصول إلى لوحة المتابعة والتحليل والتقارير.</p>
       <div class="pin-row" id="lgTeacherPinRow">
-        <input type="password" inputmode="numeric" maxlength="4" id="lgTeacherPin" placeholder="••••">
+        <input type="password" maxlength="16" id="lgTeacherPin" placeholder="رمز المعلمة">
         <button class="btn btn-primary" id="lgTeacherGo">دخول</button>
       </div>
-      <small class="muted">الرمز الافتراضي: <b>1234</b> — يمكن تغييره من لوحة ولي الأمر.</small>
+      <small class="muted">رمز المعلمة: <b>NIMAH</b> (حروف كبيرة أو صغيرة).</small>
+    </div>
+
+    <div id="lgParentView" hidden>
+      <p class="muted">اختاري ابنتك المسجّلة على هذا الجهاز، ثم أدخلي رمز ولي الأمر. ستظهر لك بيانات ابنتك فقط.</p>
+      <div class="lg-form">
+        <select id="lgParentStudent"></select>
+        <input type="password" maxlength="8" id="lgParentPin" placeholder="رمز ولي الأمر">
+        <button class="btn btn-primary" id="lgParentGo">دخول</button>
+      </div>
+      <small class="muted">الرمز الافتراضي: <b>1234</b> — يمكن تغييره من داخل لوحة ولي الأمر.</small>
     </div>
 
     <button class="btn btn-ghost btn-sm" id="lgBackRoles" hidden style="margin-top:14px">رجوع لاختيار الدور</button>
@@ -149,10 +164,10 @@
       <h2>دخول المعلمة</h2>
       <p>أدخلي الرمز السري لمتابعة الطالبات، وتحليل إنجازهن، وطباعة التقارير.</p>
       <div class="pin-row">
-        <input type="password" inputmode="numeric" maxlength="4" id="teacherPin" placeholder="••••">
+        <input type="password" maxlength="16" id="teacherPin" placeholder="رمز المعلمة">
         <button class="btn btn-primary" id="teacherPinBtn">دخول</button>
       </div>
-      <small class="muted">الرمز الافتراضي: <b>1234</b> — يمكن تغييره من لوحة ولي الأمر.</small>
+      <small class="muted">رمز المعلمة: <b>NIMAH</b> (حروف كبيرة أو صغيرة).</small>
     </div>
 
     <div id="teacherBody" hidden>
@@ -165,7 +180,7 @@
       </div>
       <div class="card" id="syncCard">
         <h3><svg><use href="#i-refresh"/></svg> المزامنة السحابية — عرض مباشر لنتائج الطالبات</h3>
-        <p class="muted">عند تفعيلها، تُرسَل نتائج الطالبات ودخولهن تلقائياً إلى هذه الصفحة لحظة بلحظة، حتى لو تدرّبن على أجهزة مختلفة. تُحدَّث الصفحة تلقائياً كل ٩ ثوانٍ.</p>
+        <p class="muted">عند تفعيلها، تُرسَل نتائج الطالبات ودخولهن تلقائياً إلى هذه الصفحة لحظة بلحظة، حتى لو تدرّبن على أجهزة مختلفة. تُحدَّث الصفحة تلقائياً كل ١٢ ثانية.</p>
         <p id="syncStatus" class="muted">…</p>
         <div class="toolbar-row">
           <button class="btn btn-primary btn-sm" id="syncNow"><svg><use href="#i-refresh"/></svg> تحديث الآن</button>
@@ -180,7 +195,7 @@
         <p class="muted" style="font-size:12.5px">طريقة الاستخدام: أرسلي «رابط الصف» للطالبات (أو أضيفي <b>?code=رمز</b> إلى الرابط). أي طالبة تفتح الرابط تُسجَّل بياناتها تلقائياً في صفك دون أن تشاهدي جهازها.</p>
       </div>
       <div class="notice" id="tpNotice">
-        ℹ️ <b>ملاحظة مهمة:</b> سجلات الطالبات تُحفظ في <b>الجهاز الذي درّبت عليه</b> فقط. إذا كانت الطالبات يتدرّبن على أجهزة أخرى، اطلبي منهن ضغط «⬇ تصدير بياناتي للمعلمة» في صفحة «بياناتي في المنصة»، ثم استوردي الملف هنا بزر «⬆ استيراد». وفعّلي «كل الفترات» لرؤية كل إنجازاتهن.
+        ℹ️ <b>ملاحظة:</b> سجلات الطالبات تُحفظ في أجهزتهن وتصل إلى هنا تلقائياً عبر المزامنة، وتُدمج دائماً دون حذف أي إنجاز سابق. إذا كانت طالبة تدرّبت ولم تظهر نتائجها، اضغطي <b>«تحديث الآن»</b> (يعيد جلب آخر ١٢ ساعة كاملة من السحابة)، أو اطلبي منها ضغط <b>«📤 إرسال كل إنجازاتي للمعلمة»</b> في صفحتها.
       </div>
       <div class="card" id="todayMedalsCard">
         <h3>🌅 أوسمة اليوم — تتجدّد يومياً</h3>
@@ -268,6 +283,7 @@
         <input id="pName" placeholder="الاسم الكامل" style="flex:1;min-width:190px">
         <input id="pSchool" placeholder="اسم المدرسة" style="flex:1;min-width:190px">
         <button class="btn btn-primary" onclick="saveProfile()">حفظ</button>
+        <button class="btn btn-soft" id="syncSendAll" title="إعادة إرسال كل إنجازاتك إلى المعلمة">📤 إرسال كل إنجازاتي للمعلمة</button>
         <button class="btn btn-ghost" id="syncStopMine" title="إرسال تقدمي لمعلمتي">📤 إيقاف/تشغيل الإرسال للمعلمة</button>
       </div>
     </div>
@@ -411,8 +427,7 @@
           <textarea id="parentMsgText" rows="3" placeholder="اكتبي رسالتكِ هنا..."></textarea>
           <div class="row">
             <button class="btn btn-primary" id="sendMsgBtn"><svg><use href="#i-bell"/></svg> إرسال الرسالة</button>
-            <button class="btn btn-ghost" id="printReport"><svg><use href="#i-print"/></svg> 🖨️ تقرير الطالبة</button>
-            <button class="btn btn-primary" id="printClassReport"><svg><use href="#i-print"/></svg> 🖨️ تقرير الصف الأسبوعي</button>
+            <button class="btn btn-ghost" id="printReport"><svg><use href="#i-print"/></svg> 🖨️ تقرير ابنتي</button>
             <button class="btn btn-ghost" id="changePin">تغيير رمز الدخول</button>
           </div>
           <div id="parentMsgStatus"></div>
@@ -433,36 +448,17 @@
       </div>
 
       <div class="card">
-        <h3><svg><use href="#i-users"/></svg> المتابعة عن بُعد (للاستخدام مع تطبيق «مستقبلهم»)</h3>
-        <p class="muted">ارفعي تقدّم ابنتك كما يظهر في تطبيق مستقبلهم ليصل إلى صاحب المبادرة.</p>
-        <div class="row wrap-sm">
-          <input id="upStudent" placeholder="اسم الطالبة">
-          <input id="upSchool" placeholder="المدرسة">
-          <input id="upExam" placeholder="اسم الاختبار">
-          <input id="upScore" type="number" min="0" max="100" placeholder="الدرجة %">
-          <button class="btn btn-primary" id="uploadBtn">رفع التقدّم</button>
-        </div>
-        <div id="uploadStatus"></div>
-        <div id="uploadedList"></div>
+        <h3>🏅 أوسمة ابنتك</h3>
+        <p class="muted">أوسمة اليوم تتجدّد يومياً بحسب حضورها وإنجازها، وأوسمة الإنجاز محفوظة دائماً ولا تُحذف.</p>
+        <div class="medals-row" id="parentMedals" style="align-items:center"></div>
+        <h4 style="margin:16px 0 8px">📅 سجل أوسمة الأيام</h4>
+        <div id="parentMedalHistory"></div>
       </div>
 
-      <div class="card" id="weeklyCard">
-        <h3><svg><use href="#i-chart"/></svg> التقرير الأسبوعي — إنجاز الطالبات ودخولهن</h3>
-        <p class="muted">تقرير للمعلمة عن كل الطالبات المسجلات على هذا الجهاز: نسبة الإنجاز والدقة وأيام الدخول وعدد الجلسات.</p>
-        <p class="muted" style="font-size:12.5px">ملاحظة: سجلات الطالبات محفوظة في هذا الجهاز. استخدمي «تصدير نسخة» لحفظها، و«استيراد نسخة» لدمج سجلات جهاز آخر في تقرير واحد.</p>
-        <div class="row wrap-sm wk-range">
-          <label>من <input type="date" id="wkFrom"></label>
-          <label>إلى <input type="date" id="wkTo"></label>
-          <button class="btn btn-soft" id="wkRefresh">تحديث</button>
-          <button class="btn btn-primary" id="printWeekly"><svg><use href="#i-print"/></svg> طباعة التقرير الأسبوعي / PDF</button>
-          <button class="btn btn-ghost" id="addStudentBtn">➕ تسجيل طالبة جديدة</button>
-        </div>
-        <div class="grid-4" id="weeklyCards"></div>
-        <div id="weeklyTable"></div>
-        <h3 style="margin-top:18px"><svg><use href="#i-bulb"/></svg> مجالات تحتاج دعماً خلال هذه الفترة</h3>
-        <div id="weeklyWeak"></div>
-        <h3 style="margin-top:18px"><svg><use href="#i-users"/></svg> سجل الطالبات وإدارة الملفات</h3>
-        <div id="rosterList"></div>
+      <div class="card">
+        <h3>📩 رسائل المعلمة وخططها لابنتك</h3>
+        <p class="muted">تظهر هنا الرسائل والخطط التي أرسلتها المعلمة، وهل قرأتها ابنتك.</p>
+        <div id="parentPlans"></div>
       </div>
     </div>
   </div>
@@ -477,14 +473,14 @@
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
 <div id="printArea" aria-hidden="true"></div>
-<script src="data-f11.js?v=31"></script>
-<script src="data-f12.js?v=31"></script>
-<script src="data-f13.js?v=31"></script>
-<script src="data-f14.js?v=31"></script>
-<script src="data-e31.js?v=31"></script>
-<script src="data-e32.js?v=31"></script>
-<script src="data-e33.js?v=31"></script>
-<script src="data-figs.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="data-f11.js?v=33"></script>
+<script src="data-f12.js?v=33"></script>
+<script src="data-f13.js?v=33"></script>
+<script src="data-f14.js?v=33"></script>
+<script src="data-e31.js?v=33"></script>
+<script src="data-e32.js?v=33"></script>
+<script src="data-e33.js?v=33"></script>
+<script src="data-figs.js?v=33"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>
