@@ -467,3 +467,5 @@ body.dark .notice{background:#241d3d;color:#ddd6fe}
 .send-opt .so-t b{display:block;font-size:15px;color:var(--ink)}
 .send-opt .so-t small{display:block;color:var(--muted);font-size:12px;margin-top:2px;line-height:1.6}
 .tp-send .btn{white-space:nowrap}
+
+.plan-msg.report{border-inline-start:4px solid var(--sky);background:linear-gradient(180deg,var(--bg2),var(--sky-l))}

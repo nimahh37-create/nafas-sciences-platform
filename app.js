@@ -1436,7 +1436,10 @@ function renderTeacher(){
       '<td class="tp-send"><select data-track="' + r.st.id + '"><option value="">متوازنة</option>' +
       '<option value="remedial"' + (r.st.track === 'remedial' ? ' selected' : '') + '>تحتاج علاجي</option>' +
       '<option value="enrichment"' + (r.st.track === 'enrichment' ? ' selected' : '') + '>إثرائي</option></select>' +
-      '<button class="btn btn-soft btn-sm" data-sendmenu="' + r.st.id + '">📩 إرسال</button></td></tr>').join('') + '</table></div>'
+      '<button class="btn btn-soft btn-sm" data-sendmenu="' + r.st.id + '">📩 إرسال</button> ' +
+      '<button class="btn btn-ghost btn-sm" data-report="' + r.st.id + '">🖨️ تقريرها</button> ' +
+      '<button class="btn btn-ghost btn-sm" data-sendrep="' + r.st.id + '">📤 أرسلي لها</button> ' +
+      '<button class="btn btn-ghost btn-sm" data-req="' + r.st.id + '">🔄 تحديث</button></td></tr>').join('') + '</table></div>'
     : '<div class="empty">لا توجد طالبات مسجلات على هذا الجهاز.</div>';
   $('#tpStudents').querySelectorAll('[data-detail]').forEach(b => b.onclick = () => renderStudentDetail(b.dataset.detail));
   $('#tpStudents').querySelectorAll('[data-openst]').forEach(b => b.onclick = () => { activateUser(b.dataset.openst); $('#teacherPanel').hidden = true; go('hub'); });
@@ -1446,6 +1449,9 @@ function renderTeacher(){
     if(st2){ st2.track = s.value; saveRegistry(reg); toast('مسار ' + st2.name + ': ' + (TRACK_LABEL[s.value] || 'متوازنة')); renderTeacher(); }
   });
   $('#tpStudents').querySelectorAll('[data-sendmenu]').forEach(b => b.onclick = () => openSendMenu(b.dataset.sendmenu));
+  $('#tpStudents').querySelectorAll('[data-report]').forEach(b => b.onclick = () => printStudentReport(b.dataset.report));
+  $('#tpStudents').querySelectorAll('[data-sendrep]').forEach(b => b.onclick = () => sendStudentReport(b.dataset.sendrep));
+  $('#tpStudents').querySelectorAll('[data-req]').forEach(b => b.onclick = () => requestStudentUpdate(b.dataset.req));
   renderSent();
 
   renderStudentDetail(A.rows.length ? A.rows[0].st.id : null, A);
@@ -1490,35 +1496,121 @@ function renderStudentDetail(id, A){
   const pb = $('#tpPrintOne');
   if(pb) pb.onclick = () => printStudentReport(st.id);
 }
-function printStudentReport(id){
-  const st = getRegistry().find(x => x.id === id);
-  if(!st) return;
+/* ---------- تقرير فردي لكل طالبة ---------- */
+function studentReportData(id){
+  const st = getRegistry().find(x => x.id === id) || { id, name:'طالبة', school:'', cls:'' };
   const all = readUser(id, 'attempts', []);
   const prog = readUser(id, 'progress', {});
-  const rows = [];
+  const mcq = all.filter(a => a.mode === 'mcq');
+  const totQ = mcq.reduce((s, a) => s + (a.total || 0), 0);
+  const totC = mcq.reduce((s, a) => s + (a.correct || 0), 0);
+  const acc = pct(totC, totQ);
+  const best = Object.keys(prog).reduce((m, k) => Math.max(m, (prog[k].mcq && prog[k].mcq.best) || 0), 0);
+  const fields = [];
   Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
     const fa = all.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
     const p = prog[sub + '|' + f.code];
-    rows.push('<tr><td>' + f.code + '</td><td style="text-align:right">' + f.title + '</td><td>' + fa.length + '</td>' +
-      '<td>' + (((p && p.mcq && p.mcq.best) || 0) + '%') + '</td>' +
-      '<td>' + (fa.length ? fa[fa.length - 1].score + '%' : '—') + '</td>' +
-      '<td>' + (((p && p.tasks && p.tasks.done) || 0) + '/5') + '</td></tr>');
+    const b = (p && p.mcq && p.mcq.best) || 0;
+    const last = fa.length ? fa[fa.length - 1].score : null;
+    const tasks = (p && p.tasks && p.tasks.done) || 0;
+    const figs = (p && p.fig && p.fig.best) || 0;
+    const figN = (p && p.fig && p.fig.attempts) || 0;
+    if(!fa.length && !tasks && !figN) return;
+    fields.push({ code:f.code, title:f.title, n:fa.length, best:b, last:last, tasks:tasks, figs:figs,
+      st: !fa.length ? (tasks || figN ? 'أنجزتِ المهام' : 'لم تبدأ') : (last >= 80 ? 'متقنة' : last >= 60 ? 'جيدة' : 'تحتاج دعماً') });
   }));
-  const html = '<div class="report"><div class="rep-head"><div><h1>تقرير إنجاز الطالبة</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء</p></div>' +
+  const weak = fields.filter(f => f.n && f.last < 80);
+  const logins = Object.keys(st.logins || {});
+  return { st, all, prog, acc, best, fields, weak, logins,
+    certs: all.filter(a => a.score >= 60).length,
+    sessions: st.sessions || 0,
+    lastSeen: st.lastSeen || 0,
+    track: st.track || '' };
+}
+function studentReportText(id){
+  const R = studentReportData(id);
+  const name = R.st.name || 'الطالبة';
+  let tx = '📊 تقرير تقدمك — ' + name + '\n';
+  tx += 'المدرسة: ' + (R.st.school || '—') + (R.st.cls ? ' | الصف: ' + R.st.cls : '') + '\n';
+  tx += 'التاريخ: ' + new Date().toLocaleDateString('ar-SA') + '\n\n';
+  tx += 'متوسط الدقة: ' + R.acc + '% | المحاولات: ' + R.all.length + ' | أفضل نتيجة: ' + R.best + '% | الشهادات: ' + R.certs + '\n';
+  tx += 'جلسات الدخول: ' + R.sessions + ' | أيام التدريب: ' + R.logins.length + '\n';
+  if(R.lastSeen) tx += 'آخر دخول: ' + new Date(R.lastSeen).toLocaleDateString('ar-SA') + '\n';
+  tx += '\n——— أداؤك في المجالات ———\n';
+  if(R.fields.length){
+    R.fields.forEach(f => {
+      tx += '• ' + f.code + ' — ' + f.title + '\n';
+      tx += '   المحاولات: ' + f.n + ' | أفضل نتيجة: ' + (f.best ? f.best + '%' : '—') + ' | آخر نتيجة: ' + (f.last === null ? '—' : f.last + '%') + '\n';
+      tx += '   الرسوم: ' + (f.figs ? f.figs + '%' : '—') + ' | المهام: ' + f.tasks + '/5 | الحالة: ' + f.st + '\n';
+    });
+  } else {
+    tx += 'لا يوجد إنجاز مسجّل بعد — ابدئي باختبار في أي مجال.\n';
+  }
+  tx += '\n——— خلاصة ———\n';
+  if(R.weak.length){
+    tx += 'مجالات تحتاج دعماً: ' + R.weak.map(f => f.code + ' (' + f.last + '%)').join('، ') + '\n';
+    tx += 'خطواتك: راجعي شرح الأسئلة الخاطئة ← أكملي مهمة مؤشر يومياً ← أعيدي الاختبار باستهداف +10 درجات.\n';
+  } else if(R.all.length){
+    tx += 'مستواك جيد جداً — حافظي على يومك التدريبي، وأخذ لكِ تحدياً إثرائياً.\n';
+  } else {
+    tx += 'ابدئي اليوم: اختبار واحد (10 أسئلة) + مهمة مؤشر واحدة.\n';
+  }
+  tx += '\nمعلمة: نعمة هرشان — إدارة تعليم جيزان';
+  return tx;
+}
+function printStudentReport(id){
+  const R = studentReportData(id);
+  const st = R.st;
+  const rows = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const fa = R.all.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
+    const p = R.prog[sub + '|' + f.code];
+    const b = (p && p.mcq && p.mcq.best) || 0;
+    const last = fa.length ? fa[fa.length - 1].score : null;
+    const tasks = (p && p.tasks && p.tasks.done) || 0;
+    const figs = (p && p.fig && p.fig.best) || 0;
+    rows.push('<tr><td>' + f.code + '</td><td style="text-align:right">' + f.title + '</td><td>' + fa.length + '</td>' +
+      '<td>' + (b ? b + '%' : '—') + '</td><td>' + (last === null ? '—' : last + '%') + '</td>' +
+      '<td>' + (figs ? figs + '%' : '—') + '</td><td>' + tasks + '/5</td></tr>');
+  }));
+  const html = '<div class="report"><div class="rep-head"><div><h1>تقرير تقدم الطالبة</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
     '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
-    '<div class="rep-meta"><div><b>الطالبة:</b> ' + esc(st.name) + '</div><div><b>المدرسة:</b> ' + esc(st.school || '—') + '</div>' +
+    '<div class="rep-meta"><div><b>الطالبة:</b> ' + esc(st.name || '—') + '</div><div><b>المدرسة:</b> ' + esc(st.school || '—') + '</div>' +
     '<div><b>الصف:</b> ' + esc(st.cls || '—') + '</div><div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div></div>' +
-    '<div class="rep-kpis"><div><b>' + all.length + '</b><span>محاولة</span></div>' +
-    '<div><b>' + all.filter(a => a.score >= 60).length + '</b><span>شهادة</span></div>' +
-    '<div><b>' + (st.sessions || 0) + '</b><span>جلسة دخول</span></div>' +
-    '<div><b>' + Object.keys(st.logins || {}).length + '</b><span>يوم دخول</span></div></div>' +
-    '<h2>أداؤها في المجالات</h2><table class="rep-table"><tr><th>المجال</th><th>العنوان</th><th>المحاولات</th><th>أفضل نتيجة</th><th>آخر نتيجة</th><th>المهام</th></tr>' + rows.join('') + '</table>' +
-    '<h2>آخر المحاولات</h2><table class="rep-table"><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th></tr>' +
-    all.slice(-15).reverse().map(a => '<tr><td style="text-align:right">' + esc(a.title) + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') + '</table>' +
+    '<div class="rep-kpis"><div><b>' + R.all.length + '</b><span>محاولة</span></div>' +
+    '<div><b>' + R.acc + '%</b><span>متوسط الدقة</span></div>' +
+    '<div><b>' + R.best + '%</b><span>أفضل نتيجة</span></div>' +
+    '<div><b>' + R.certs + '</b><span>شهادة</span></div></div>' +
+    '<h2>أداؤها في المجالات</h2><table class="rep-table"><tr><th>المجال</th><th>العنوان</th><th>المحاولات</th><th>أفضل نتيجة</th><th>آخر نتيجة</th><th>الرسوم</th><th>المهام</th></tr>' + rows.join('') + '</table>' +
+    (R.weak.length ? '<h2>مجالات تحتاج دعماً</h2><p class="rep-note">' + R.weak.map(f => f.code + ' — ' + f.title + ' (آخر نتيجة ' + f.last + '%)').join(' • ') + '</p>' +
+      '<p class="rep-note">الخطوات: مراجعة المؤشر ← إعادة الأسئلة الخاطئة ← مهمة مؤشر يومياً ← إعادة الاختبار بهدف +10 درجات.</p>' : '') +
+    '<h2>سجل الدخول</h2><p class="rep-note">عدد الجلسات: ' + R.sessions + ' • أيام التدريب: ' + R.logins.length + (R.lastSeen ? ' • آخر دخول: ' + new Date(R.lastSeen).toLocaleDateString('ar-SA') : '') + '</p>' +
+    '<h2>آخر المحاولات</h2>' + (R.all.length ? '<table class="rep-table"><tr><th>المهمة</th><th>النوع</th><th>الدرجة</th><th>التاريخ</th></tr>' +
+      R.all.slice(-15).reverse().map(a => '<tr><td style="text-align:right">' + esc(a.title) + '</td><td>' + (a.mode === 'mcq' ? 'اختبار' : a.mode === 'fig' ? 'رسوم' : 'مؤشر') + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') + '</table>'
+      : '<p class="rep-note">لا توجد محاولات مسجّلة لهذه الطالبة بعد.</p>') +
     '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div></div>';
   $('#printArea').innerHTML = html;
   document.body.classList.add('printing');
   setTimeout(() => { window.print(); }, 120);
+}
+function sendStudentReport(id){
+  const st = getRegistry().find(x => x.id === id);
+  if(!st){ toast('لا توجد بيانات الطالبة'); return; }
+  const txt = studentReportText(id);
+  const list = getPlans();
+  const rec = { id:'r' + Date.now() + '-' + Math.floor(Math.random() * 900), sid:id, name:st.name, type:'report',
+    title:'📊 تقرير تقدمك', text:txt, date:today(), time:new Date().toLocaleTimeString('ar-SA'), read:false };
+  list.push(rec);
+  savePlans(list);
+  if(typeof syncPushPlan === 'function') syncPushPlan(rec);
+  renderSent();
+  toast('تم إرسال تقرير ' + st.name + ' إليها 📩');
+}
+function requestStudentUpdate(id){
+  const st = getRegistry().find(x => x.id === id);
+  if(!st) return;
+  if(typeof postMsg === 'function') postMsg(JSON.stringify({ t:'req', sid:id, name:st.name }), 'req');
+  toast('تم إرسال طلب تحديث إلى ' + st.name + ' — ستتحدث بياناتها خلال ثوانٍ إن كانت متصلة 📡');
 }
 function buildAnalysisReport(){
   const from = ($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from;
@@ -2134,6 +2226,10 @@ function syncPull(){
           cache[p.id].parts = cache[p.id].parts || {};
           cache[p.id].parts[p.part] = p.items;
           changed = true;
+        } else if(p.t === 'req' && p.sid){
+          if(p.sid === U.id || (p.name && p.name === profile.name)){
+            setTimeout(() => { syncPush(); }, 500);
+          }
         } else if(p.t === 'plan' && p.plan && p.plan.id){
           const pl = getPlans();
           if(!pl.some(x => x.id === p.plan.id)){
@@ -2174,7 +2270,10 @@ function startSyncLoop(){
       syncPull().then(() => { renderInbox(); renderBell(); });
     }
   }, 20000);
+  if(syncKeepTimer) clearInterval(syncKeepTimer);
+  syncKeepTimer = setInterval(() => { if(U.id && syncEnabled()) syncPush(); }, 600000);
 }
+let syncKeepTimer = null;
 let syncTimer = null;
 on('#syncNow', () => { syncPull().then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تم تحديث النتائج من الطالبات ✅' : 'لا جديد الآن'); }); });
 on('#syncToggle', () => { setSyncEnabled(!syncEnabled()); renderTeacher(); toast(syncEnabled() ? 'تم تفعيل المزامنة ✅' : 'تم إيقاف المزامنة'); });
