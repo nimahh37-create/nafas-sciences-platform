@@ -8,10 +8,18 @@ const APP = {
   pin:'1234'
 };
 
-/* ---------- تخزين ---------- */
-const K = { profile:'nafes_profile', progress:'nafes_progress', attempts:'nafes_attempts', msg:'nafes_msg', goal:'nafes_goal', pin:'nafes_pin', theme:'nafes_theme' };
-const g = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
-const s = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+/* ---------- تخزين (لكل طالبة مساحة بيانات مستقلة) ---------- */
+const K = { profile:'profile', progress:'progress', attempts:'attempts', msg:'msg', goal:'goal', pin:'nafes_pin', theme:'nafes_theme' };
+const GLOBAL_KEYS = ['nafes_pin','nafes_theme','nafas_registry','nafas_active','nafas_uploads'];
+let U = { id: localStorage.getItem('nafas_active') || '' };
+const uk = (base) => GLOBAL_KEYS.indexOf(base) > -1 ? base : 'nafas_u_' + U.id + '_' + base;
+const g = (k, d) => { try { const v = localStorage.getItem(uk(k)); return v ? JSON.parse(v) : d; } catch { return d; } };
+const s = (k, v) => localStorage.setItem(uk(k), JSON.stringify(v));
+const gRaw = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
+const sRaw = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const readUser = (id, base, d) => gRaw('nafas_u_' + id + '_' + base, d);
+const writeUser = (id, base, v) => sRaw('nafas_u_' + id + '_' + base, v);
+const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 
 let profile = g(K.profile, { name:'', school:'' });
 let progress = g(K.progress, {});       // key -> {mcq:{best,attempts,corrected}, tasks:{done}, last:ts}
@@ -19,6 +27,90 @@ let attempts = g(K.attempts, []);        // سجل المحاولات
 let messages = g(K.msg, []);             // رسائل ولي الأمر
 let goal = g(K.goal, 10);
 let pin = g(K.pin, APP.pin);
+
+/* ---------- الطالبات: السجل وتسجيل الدخول ---------- */
+const getRegistry = () => gRaw('nafas_registry', []);
+const saveRegistry = (reg) => sRaw('nafas_registry', reg);
+const studentExists = (id) => getRegistry().some(x => x.id === id);
+
+function loadUserData(){
+  profile = g(K.profile, { name:'', school:'' });
+  progress = g(K.progress, {});
+  attempts = g(K.attempts, []);
+  messages = g(K.msg, []);
+  goal = g(K.goal, 10);
+}
+function logLogin(){
+  const reg = getRegistry();
+  const st = reg.find(x => x.id === U.id);
+  if(!st) return;
+  st.lastSeen = Date.now();
+  st.sessions = (st.sessions || 0) + 1;
+  st.logins = st.logins || {};
+  const d = today();
+  st.logins[d] = (st.logins[d] || 0) + 1;
+  saveRegistry(reg);
+}
+function migrateLegacy(){
+  if(localStorage.getItem('nafas_registry')) return;
+  const legacy = gRaw('nafes_profile', null);
+  if(!legacy) return;
+  const id = 'u' + Date.now();
+  const st = { id, name: legacy.name || 'طالبة', school: legacy.school || '', cls:'',
+               firstSeen:Date.now(), lastSeen:Date.now(), sessions:1, logins:{} };
+  st.logins[today()] = 1;
+  saveRegistry([st]);
+  const map = { nafas_profile:'profile', nafas_progress:'progress', nafas_attempts:'attempts', nafas_msg:'msg', nafas_goal:'goal' };
+  Object.keys(map).forEach(k => { const v = localStorage.getItem(k); if(v) writeUser(id, map[k], JSON.parse(v)); });
+  localStorage.setItem('nafas_active', id);
+  U.id = id;
+}
+function renderLoginGate(){
+  const list = $('#loginList');
+  if(!list) return;
+  const reg = getRegistry();
+  list.innerHTML = reg.length ? reg.map(st =>
+    '<button class="lg-user" data-id="' + st.id + '"><span class="avatar">' + esc((st.name || '؟').trim()[0]) + '</span>' +
+    '<span class="lg-u"><b>' + esc(st.name) + '</b><small>' + esc(st.school || 'بدون مدرسة') + ' • آخر دخول: ' +
+    (st.lastSeen ? new Date(st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</small></span></button>').join('')
+    : '<div class="empty">لا توجد طالبات مسجلات على هذا الجهاز بعد — سجّلي حساباً جديداً بالأسفل.</div>';
+  list.querySelectorAll('[data-id]').forEach(b => b.onclick = () => activateUser(b.dataset.id));
+  $('#loginGate').hidden = false;
+}
+function activateUser(id){
+  U.id = id;
+  localStorage.setItem('nafas_active', id);
+  loadUserData();
+  logLogin();
+  $('#loginGate').hidden = true;
+  renderAll();
+  toast('أهلًا ' + (profile.name || '') + ' 👋');
+}
+function addStudent(){
+  const name = $('#lgName').value.trim(), school = $('#lgSchool').value.trim(), cls = $('#lgClass').value.trim();
+  if(!name){ toast('اكتبي اسم الطالبة أولاً ✍️'); return; }
+  const reg = getRegistry();
+  const id = 'u' + Date.now() + Math.floor(Math.random() * 900);
+  reg.push({ id, name, school, cls, firstSeen:Date.now(), lastSeen:Date.now(), sessions:0, logins:{} });
+  saveRegistry(reg);
+  U.id = id; localStorage.setItem('nafas_active', id);
+  profile = { name, school, cls };
+  s(K.profile, profile); s(K.progress, {}); s(K.attempts, []); s(K.msg, []); s(K.goal, 10);
+  loadUserData();
+  logLogin();
+  $('#lgName').value = ''; $('#lgSchool').value = ''; $('#lgClass').value = '';
+  $('#loginGate').hidden = true;
+  renderAll();
+  toast('تم تسجيل ' + name + ' ✅');
+}
+function switchUser(){
+  U.id = ''; localStorage.removeItem('nafas_active');
+  renderLoginGate();
+}
+function renderAll(){
+  renderProfile(); renderHub(); renderTrain(); renderProgress(); renderUploaded();
+  const an = $('#activeName'); if(an) an.textContent = profile.name || 'الطالبة';
+}
 
 let state = { mode:null, subject:null, field:null, items:[], idx:0, answers:{}, hints:{}, taskSelf:{}, startTs:0, onlyWrong:false };
 
@@ -368,6 +460,7 @@ function finishMCQ(){
   $('#quizBox').querySelectorAll('[data-cert]').forEach(b => b.onclick = () => showCert(f.title, score, correct, total));
   $('#quizBox').querySelectorAll('[data-back]').forEach(b => b.onclick = () => { go('train'); });
   renderHub();
+  setTimeout(() => showCert(f.title, score, correct, total), 450);
 }
 
 /* ---------- بنك أسئلة الرسوم ---------- */
@@ -488,6 +581,7 @@ function finishFigs(){
   $('#quizBox').querySelectorAll('[data-again]').forEach(b => b.onclick = () => startFigs(sub, f, state.figChunk));
   $('#quizBox').querySelectorAll('[data-cert]').forEach(b => b.onclick = () => showCert(f.title + ' — الرسوم', score, correct, total));
   $('#quizBox').querySelectorAll('[data-back]').forEach(b => b.onclick = () => go('train'));
+  setTimeout(() => showCert(f.title + ' — الرسوم', score, correct, total), 450);
   $('#quizBox').querySelectorAll('[data-zoom]').forEach(img => img.onclick = () => {
     $('#modalBox').innerHTML = '<img src="' + img.dataset.zoom + '" style="width:100%;border-radius:12px">';
     $('#modal').hidden = false;
@@ -568,11 +662,14 @@ function finishTasks(){
     '<p>مهام أتقنتِها: <b>' + ok + '</b> • جزئية: ' + part + ' • تحتاج مراجعة: ' + no + '</p>' +
     '<div class="why"><b>💡 ماذا يعني هذا؟</b><br>مهام المؤشر تطلب منك الفهم والشرح، وليست اختياراً فقط. عندما تستطيعين شرح الإجابة بكلماتك أنتِ فأنتِ أتقنتِ المؤشر فعلاً.</div>' +
     '<div class="qfoot" style="justify-content:center"><button class="btn btn-primary" data-again="1">🔁 إعادة المهام</button>' +
+    '<button class="btn btn-ghost" data-cert="1">🎓 شهادة الإنجاز</button>' +
     '<button class="btn btn-back" data-back="1">رجوع للمجالات</button></div></div>';
   $('#quizBox').innerHTML = html;
   $('#quizBox').querySelectorAll('[data-again]').forEach(b => b.onclick = () => startTasks(sub, f));
+  $('#quizBox').querySelectorAll('[data-cert]').forEach(b => b.onclick = () => showCert(f.title + ' (مهام مؤشر)', score, ok, total));
   $('#quizBox').querySelectorAll('[data-back]').forEach(b => b.onclick = () => go('train'));
   renderHub();
+  setTimeout(() => showCert(f.title + ' (مهام مؤشر)', score, ok, total), 450);
 }
 
 /* ---------- الخطط العلاجية ---------- */
@@ -710,7 +807,7 @@ function buildReport(){
 
   let html = '<div class="report">' +
     '<div class="rep-head"><div><h1>تقرير التقدم الشامل</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
-    '<div class="rep-brand">إدارة تعليم مكة<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
     '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>المدرسة:</b> ' + school + '</div>' +
     '<div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div><div><b>سجل التدريب:</b> ' + attempts.length + ' مهمة</div></div>' +
     '<div class="rep-kpis"><div><b>' + avg + '%</b><span>متوسط الدقة</span></div>' +
@@ -759,7 +856,7 @@ function doPrint(){
 function printPlan(sub, f){
   const name = profile.name || 'الطالبة';
   $('#printArea').innerHTML = '<div class="report"><div class="rep-head"><div><h1>خطة علاجية</h1><p>' + f.code + ' — ' + f.title + '</p></div>' +
-    '<div class="rep-brand">إدارة تعليم مكة<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
     '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div></div>' +
     planHTML(sub, f, true) + '</div>';
   const root = $('#printArea');
@@ -772,24 +869,37 @@ function printPlan(sub, f){
 }
 window.addEventListener('afterprint', () => document.body.classList.remove('printing'));
 
-/* ---------- الشهادة ---------- */
-function showCert(title, score, correct, total){
+/* ---------- الشهادة (تُمنح بعد كل اختبار منجز — قابلة للطباعة والحفظ PDF) ---------- */
+function certHTML(title, score, correct, total){
   const name = profile.name || 'الطالبة';
   const school = profile.school || '';
-  const box = $('#modalBox');
-  box.innerHTML = '<div class="cert"><div class="seal">🏅</div>' +
+  return '<div class="cert"><div class="seal">🏅</div>' +
     '<p style="font-weight:800;color:var(--violet)">تدريب نافس علوم</p>' +
-    '<p class="muted">إدارة تعليم مكة · إعداد المعلمة: نعمة هرشان</p>' +
+    '<p class="muted">إدارة تعليم جيزان · إعداد المعلمة: نعمة هرشان</p>' +
     '<h2>شهادة إنجاز</h2>' +
     '<p>تشهد منصة تدريب نافس علوم بأن</p>' +
-    '<div class="cname">' + name + '</div>' +
-    '<p class="muted">' + (school ? 'من مدرسة: ' + school : '') + '</p>' +
-    '<p>قد أتمّت بنجاح مهمة <b>' + title + '</b></p>' +
+    '<div class="cname">' + esc(name) + '</div>' +
+    '<p class="muted">' + (school ? 'من مدرسة: ' + esc(school) : '') + '</p>' +
+    '<p>قد أتمّت بنجاح مهمة <b>' + esc(title) + '</b></p>' +
     '<div class="cgrade">' + score + '%</div>' +
     '<p class="muted">' + correct + ' من ' + total + ' • ' + new Date().toLocaleDateString('ar-SA') + '</p>' +
     '<div class="sign"><span>المعلمة: نعمة هرشان</span><span>التوقيع: ____________</span></div>' +
-    '<div class="qfoot" style="justify-content:center;margin-top:16px"><button class="btn btn-primary" onclick="window.print()">🖨️ طباعة الشهادة</button></div></div>';
+    '</div>';
+}
+function showCert(title, score, correct, total){
+  const box = $('#modalBox');
+  box.innerHTML = certHTML(title, score, correct, total) +
+    '<div class="qfoot" style="justify-content:center;margin-top:14px">' +
+    '<button class="btn btn-primary" data-printcert="1">🖨️ طباعة الشهادة / حفظ PDF</button>' +
+    '<button class="btn btn-ghost" data-closeModal="1">إغلاق</button></div>';
+  box.querySelector('[data-printcert]').onclick = () => printCert(title, score, correct, total);
+  box.querySelector('[data-closeModal]').onclick = () => { $('#modal').hidden = true; };
   $('#modal').hidden = false;
+}
+function printCert(title, score, correct, total){
+  $('#printArea').innerHTML = '<div class="certprint">' + certHTML(title, score, correct, total) + '</div>';
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
 }
 $('#modal').onclick = e => { if(e.target.id === 'modal') $('#modal').hidden = true; };
 
@@ -885,6 +995,8 @@ function renderParent(){
     : '<div class="empty">لا توجد محاولات بعد.</div>';
 
   $$('.goal').forEach(b => b.classList.toggle('active', +b.dataset.g === goal));
+  initWeekInputs();
+  renderWeekly();
 }
 $$('.goal').forEach(b => b.onclick = () => { goal = +b.dataset.g; s(K.goal, goal); renderParent(); toast('تم ضبط الهدف اليومي: ' + goal + ' أسئلة'); });
 $$('#msgChips .chip').forEach(c => c.onclick = () => { $('#parentMsgText').value = c.textContent; });
@@ -906,18 +1018,212 @@ $('#uploadBtn').onclick = () => {
   const st = $('#upStudent').value.trim(), sc = $('#upSchool').value.trim(),
         ex = $('#upExam').value.trim(), sc2 = parseInt($('#upScore').value, 10);
   if(!st || !sc || !ex || isNaN(sc2)){ toast('أكملي بيانات الرفع ⬆️'); return; }
-  attempts.push({ mode:'mcq', subject:'upload', field:'app', title:ex, score:sc2, correct:Math.round(sc2/10), total:10, answered:10, hints:0, retry:false, date:today(), time:new Date().toLocaleTimeString('ar-SA'), xp:0, source:'تطبيق مستقبلهم' });
-  s(K.attempts, attempts);
+  const ups = gRaw('nafas_uploads', []);
+  ups.push({ student:st, school:sc, exam:ex, score:sc2, date:today(), time:new Date().toLocaleTimeString('ar-SA') });
+  sRaw('nafas_uploads', ups);
   $('#uploadStatus').innerHTML = '<div class="notice">✅ تم رفع تقدّم <b>' + st + '</b> (' + sc2 + '%) إلى لوحة صاحب المبادرة.</div>';
   renderParent(); renderHub();
 };
 function renderUploaded(){
   const box = $('#uploadedList');
   if(!box) return;
-  const up = attempts.filter(a => a.source);
+  const up = gRaw('nafas_uploads', []);
   box.innerHTML = up.length ? '<table><tr><th>الطالبة</th><th>المهمة</th><th>الدرجة</th><th>التاريخ</th></tr>' +
-    up.slice().reverse().map(a => '<tr><td>' + a.student + '</td><td>' + a.title + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') + '</table>' : '';
+    up.slice().reverse().map(a => '<tr><td>' + esc(a.student) + '</td><td>' + esc(a.exam) + '</td><td>' + a.score + '%</td><td>' + a.date + '</td></tr>').join('') + '</table>' : '';
 }
+
+/* ---------- التقرير الأسبوعي للمعلمة + سجل الطالبات ---------- */
+function defaultWeek(){
+  const to = today();
+  const d = new Date(); d.setDate(d.getDate() - 6);
+  return { from: d.toISOString().slice(0,10), to };
+}
+function weekData(st, from, to){
+  const at = readUser(st.id, 'attempts', []);
+  const prog = readUser(st.id, 'progress', {});
+  const inWeek = at.filter(a => a.date >= from && a.date <= to);
+  const mcq = inWeek.filter(a => a.mode === 'mcq');
+  const totQ = mcq.reduce((s,a)=>s+(a.total||0),0);
+  const totC = mcq.reduce((s,a)=>s+(a.correct||0),0);
+  const loginDays = Object.keys(st.logins || {}).filter(d => d >= from && d <= to);
+  const sessions = loginDays.reduce((s,d)=>s+(st.logins[d]||0),0);
+  const best = Object.keys(prog).reduce((m,k)=>Math.max(m, (prog[k].mcq && prog[k].mcq.best) || 0), 0);
+  const weak = [];
+  Object.keys(BANK).forEach(sub => BANK[sub].fields.forEach(f => {
+    const fa = at.filter(a => a.subject === sub && a.field === f.code && a.mode === 'mcq');
+    if(!fa.length) return;
+    const la = fa[fa.length - 1];
+    if(la.score < 80) weak.push({ code:f.code, title:f.title, last:la.score, wrong:(la.wrong||[]).length });
+  }));
+  return { inWeek, mcqCount:mcq.length, totQ, totC, accuracy: pct(totC, totQ), loginDays, sessions, best, weak, allAttempts: at.length };
+}
+function weeklyData(){
+  const from = ($('#wkFrom') && $('#wkFrom').value) || defaultWeek().from;
+  const to = ($('#wkTo') && $('#wkTo').value) || defaultWeek().to;
+  return { from, to, rows: getRegistry().map(st => ({ st, w: weekData(st, from, to) })) };
+}
+function weekStatus(w){
+  return !w.allAttempts ? 'لم تبدأ' : (w.accuracy >= 80 ? 'متميزة' : w.accuracy >= 60 ? 'جيدة' : 'تحتاج دعماً');
+}
+function renderWeekly(){
+  const host = $('#weeklyTable');
+  if(!host) return;
+  const { from, to, rows } = weeklyData();
+  const att = rows.reduce((s,r)=>s+r.w.inWeek.length,0);
+  const sess = rows.reduce((s,r)=>s+r.w.sessions,0);
+  const days = rows.reduce((s,r)=>s+r.w.loginDays.length,0);
+  const tq = rows.reduce((s,r)=>s+r.w.totQ,0), tc = rows.reduce((s,r)=>s+r.w.totC,0);
+  $('#weeklyCards').innerHTML =
+    '<div class="kpi"><b>' + rows.length + '</b><small>طالبة مسجلة</small></div>' +
+    '<div class="kpi"><b>' + sess + '</b><small>جلسات دخول الأسبوع</small></div>' +
+    '<div class="kpi"><b>' + att + '</b><small>محاولات الأسبوع</small></div>' +
+    '<div class="kpi"><b>' + (tq ? pct(tc, tq) : 0) + '%</b><small>متوسط الدقة</small></div>';
+  host.innerHTML = rows.length ? '<table><tr><th>الطالبة</th><th>المدرسة</th><th>أيام الدخول</th><th>الجلسات</th><th>آخر دخول</th><th>محاولات الأسبوع</th><th>الدقة</th><th>أفضل نتيجة</th><th>الحالة</th></tr>' +
+    rows.map(r => '<tr><td><b>' + esc(r.st.name) + '</b></td><td>' + esc(r.st.school || '—') + '</td>' +
+      '<td>' + r.w.loginDays.length + '</td><td>' + r.w.sessions + '</td>' +
+      '<td>' + (r.st.lastSeen ? new Date(r.st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</td>' +
+      '<td>' + r.w.inWeek.length + '</td><td>' + (r.w.mcqCount ? r.w.accuracy + '%' : '—') + '</td>' +
+      '<td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + weekStatus(r.w) + '</td></tr>').join('') + '</table>'
+    : '<div class="empty">لا توجد طالبات مسجلات على هذا الجهاز.</div>';
+  const weakRows = [];
+  rows.forEach(r => r.w.weak.forEach(wf => weakRows.push({ name:r.st.name, wf })));
+  $('#weeklyWeak').innerHTML = weakRows.length ? '<table><tr><th>الطالبة</th><th>المجال</th><th>آخر نتيجة</th><th>أسئلة خاطئة</th></tr>' +
+    weakRows.map(x => '<tr><td>' + esc(x.name) + '</td><td>' + x.wf.code + ' — ' + esc(x.wf.title) + '</td><td>' + x.wf.last + '%</td><td>' + x.wf.wrong + '</td></tr>').join('') + '</table>'
+    : '<div class="empty">لا توجد مجالات تحتاج دعماً في هذه الفترة 🌟</div>';
+  renderRoster();
+}
+function renderRoster(){
+  const host = $('#rosterList');
+  if(!host) return;
+  const reg = getRegistry();
+  host.innerHTML = reg.length ? reg.map(st =>
+    '<div class="review-row"><div class="rq">' + esc(st.name) + ' <small>' + esc(st.school || '—') + '</small></div>' +
+    '<div class="rr">جلسات: ' + (st.sessions || 0) + ' • آخر دخول: ' + (st.lastSeen ? new Date(st.lastSeen).toLocaleDateString('ar-SA') : '—') +
+    ' <button class="btn btn-ghost btn-sm" data-open="' + st.id + '">فتح ملفها</button>' +
+    ' <button class="btn btn-ghost btn-sm" data-del="' + st.id + '">حذف</button></div></div>').join('')
+    : '<div class="empty">لا توجد طالبات مسجلات بعد.</div>';
+  host.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { activateUser(b.dataset.open); go('hub'); });
+  host.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    if(!confirm('حذف بيانات هذه الطالبة نهائياً؟')) return;
+    const id = b.dataset.del;
+    saveRegistry(getRegistry().filter(x => x.id !== id));
+    ['profile','progress','attempts','msg','goal'].forEach(k => localStorage.removeItem('nafas_u_' + id + '_' + k));
+    if(U.id === id) switchUser(); else renderWeekly();
+  });
+}
+function buildWeeklyReport(){
+  const { from, to, rows } = weeklyData();
+  const att = rows.reduce((s,r)=>s+r.w.inWeek.length,0);
+  const sess = rows.reduce((s,r)=>s+r.w.sessions,0);
+  const days = rows.reduce((s,r)=>s+r.w.loginDays.length,0);
+  const tq = rows.reduce((s,r)=>s+r.w.totQ,0), tc = rows.reduce((s,r)=>s+r.w.totC,0);
+  const ups = gRaw('nafas_uploads', []);
+  let html = '<div class="report">' +
+    '<div class="rep-head"><div><h1>التقرير الأسبوعي — إنجاز الطالبات ودخولهن</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>الفترة:</b> ' + from + ' — ' + to + '</div>' +
+    '<div><b>تاريخ الإصدار:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div>' +
+    '<div><b>عدد الطالبات:</b> ' + rows.length + '</div>' +
+    '<div><b>جلسات الدخول:</b> ' + sess + ' خلال ' + days + ' يوماً</div></div>' +
+    '<div class="rep-kpis"><div><b>' + rows.length + '</b><span>طالبة</span></div>' +
+    '<div><b>' + sess + '</b><span>جلسة دخول</span></div>' +
+    '<div><b>' + att + '</b><span>محاولة</span></div>' +
+    '<div><b>' + (tq ? pct(tc, tq) : 0) + '%</b><span>متوسط الدقة</span></div></div>' +
+    '<h2>متابعة الطالبات</h2><table class="rep-table"><tr><th>الطالبة</th><th>المدرسة</th><th>أيام الدخول</th><th>الجلسات</th><th>آخر دخول</th><th>محاولات الأسبوع</th><th>الدقة</th><th>أفضل نتيجة</th><th>الحالة</th></tr>' +
+    rows.map(r => '<tr><td style="text-align:right">' + esc(r.st.name) + '</td><td>' + esc(r.st.school || '—') + '</td>' +
+      '<td>' + r.w.loginDays.length + '</td><td>' + r.w.sessions + '</td>' +
+      '<td>' + (r.st.lastSeen ? new Date(r.st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</td>' +
+      '<td>' + r.w.inWeek.length + '</td><td>' + (r.w.mcqCount ? r.w.accuracy + '%' : '—') + '</td>' +
+      '<td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + weekStatus(r.w) + '</td></tr>').join('') + '</table>';
+  const weakRows = [];
+  rows.forEach(r => r.w.weak.forEach(wf => weakRows.push({ name:r.st.name, wf })));
+  html += '<h2>مجالات تحتاج دعماً</h2>' + (weakRows.length ? '<table class="rep-table"><tr><th>الطالبة</th><th>المجال</th><th>آخر نتيجة</th><th>أسئلة خاطئة</th></tr>' +
+    weakRows.map(x => '<tr><td style="text-align:right">' + esc(x.name) + '</td><td>' + x.wf.code + ' — ' + esc(x.wf.title) + '</td><td>' + x.wf.last + '%</td><td>' + x.wf.wrong + '</td></tr>').join('') + '</table>'
+    : '<p class="rep-note">لا توجد مجالات تحتاج دعماً في هذه الفترة 🌟</p>');
+  if(ups.length){
+    html += '<h2>نتائج مرفوعة من تطبيق «مستقبلهم»</h2><table class="rep-table"><tr><th>الطالبة</th><th>المدرسة</th><th>الاختبار</th><th>الدرجة</th><th>التاريخ</th></tr>' +
+      ups.slice().reverse().map(u => '<tr><td style="text-align:right">' + esc(u.student) + '</td><td>' + esc(u.school || '—') + '</td><td style="text-align:right">' + esc(u.exam) + '</td><td>' + u.score + '%</td><td>' + u.date + '</td></tr>').join('') + '</table>';
+  }
+  html += '<div class="rep-sign"><div>توقيع المعلمة: ........................</div><div>توقيع ولي الأمر: ........................</div></div>' +
+    '<p class="rep-foot">تقرير صادر من منصة «تدريب نافس علوم» — إدارة تعليم جيزان — إعداد المعلمة نعمة هرشان.</p></div>';
+  return html;
+}
+function printWeekly(){
+  $('#printArea').innerHTML = buildWeeklyReport();
+  document.body.classList.add('printing');
+  setTimeout(() => { window.print(); }, 120);
+}
+function exportData(){
+  const reg = getRegistry();
+  const data = { app:'nafas-training-3m', version:1, exportedAt:new Date().toISOString(),
+    students: reg.map(st => ({ id:st.id, name:st.name, school:st.school, cls:st.cls,
+      firstSeen:st.firstSeen, lastSeen:st.lastSeen, sessions:st.sessions, logins:st.logins,
+      profile: readUser(st.id,'profile',{}), progress: readUser(st.id,'progress',{}), attempts: readUser(st.id,'attempts',[]) })),
+    uploads: gRaw('nafas_uploads', []) };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'تدريب-نافس-علوم-' + today() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('تم تصدير البيانات ✅');
+}
+function importData(file){
+  const fr = new FileReader();
+  fr.onload = () => {
+    try{
+      const data = JSON.parse(fr.result);
+      const reg = getRegistry();
+      (data.students || []).forEach(st => {
+        let t = reg.find(x => x.id === st.id);
+        if(!t){
+          t = { id:st.id, name:st.name || 'طالبة', school:st.school || '', cls:st.cls || '',
+                firstSeen:st.firstSeen || Date.now(), lastSeen:st.lastSeen || Date.now(), sessions:0, logins:{} };
+          reg.push(t);
+        }
+        if(st.name) t.name = st.name;
+        if(st.school) t.school = st.school;
+        t.logins = t.logins || {};
+        Object.keys(st.logins || {}).forEach(d => { t.logins[d] = Math.max(t.logins[d] || 0, st.logins[d]); });
+        t.lastSeen = Math.max(t.lastSeen || 0, st.lastSeen || 0);
+        t.sessions = Math.max(t.sessions || 0, st.sessions || 0);
+        const cur = readUser(t.id, 'attempts', []);
+        const seen = new Set(cur.map(a => a.date + '|' + a.title + '|' + a.score + '|' + (a.time || '')));
+        (st.attempts || []).forEach(a => {
+          const k = a.date + '|' + a.title + '|' + a.score + '|' + (a.time || '');
+          if(!seen.has(k)){ cur.push(a); seen.add(k); }
+        });
+        writeUser(t.id, 'attempts', cur);
+        if(st.profile) writeUser(t.id, 'profile', st.profile);
+        if(st.progress) writeUser(t.id, 'progress', st.progress);
+      });
+      saveRegistry(reg);
+      const ups = gRaw('nafas_uploads', []);
+      (data.uploads || []).forEach(u => {
+        if(!ups.some(x => x.date === u.date && x.student === u.student && x.exam === u.exam)) ups.push(u);
+      });
+      sRaw('nafas_uploads', ups);
+      renderWeekly(); renderUploaded();
+      toast('تم استيراد البيانات ✅');
+    }catch(e){ toast('تعذر قراءة الملف ❌'); }
+  };
+  fr.readAsText(file);
+}
+function initWeekInputs(){
+  const d = defaultWeek();
+  const f = $('#wkFrom'), tt = $('#wkTo');
+  if(f && !f.value) f.value = d.from;
+  if(tt && !tt.value) tt.value = d.to;
+}
+const on = (sel, fn) => { const e = $(sel); if(e) e.onclick = fn; };
+on('#wkRefresh', () => { renderWeekly(); toast('تم تحديث التقرير الأسبوعي ✅'); });
+on('#printWeekly', () => printWeekly());
+on('#exportData', () => exportData());
+on('#importData', () => { const f = $('#importFile'); if(f) f.click(); });
+on('#addStudentBtn', () => switchUser());
+on('#switchUserBtn', () => switchUser());
+on('#lgAddBtn', () => addStudent());
+const imp = $('#importFile');
+if(imp) imp.onchange = e => { if(e.target.files[0]) importData(e.target.files[0]); e.target.value = ''; };
 
 /* ---------- الوضع الليلي ---------- */
 $('#themeBtn').onclick = () => {
@@ -937,8 +1243,9 @@ $('#dailyBtn').onclick = () => {
 };
 
 /* ---------- التشغيل ---------- */
-renderProfile();
-renderHub();
-renderTrain();
-renderProgress();
-renderUploaded();
+migrateLegacy();
+if(U.id && !studentExists(U.id)){ U.id = ''; localStorage.removeItem('nafas_active'); }
+if(U.id) logLogin();
+renderAll();
+initWeekInputs();
+if(!U.id) renderLoginGate();

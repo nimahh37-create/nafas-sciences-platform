@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
@@ -63,11 +63,36 @@
     </nav>
 
     <div class="appbar-right">
+      <button class="btn btn-ghost btn-sm" id="switchUserBtn" title="تبديل الطالبة">👤 <span id="activeName">الطالبة</span></button>
       <button class="icon-btn" id="themeBtn" aria-label="الوضع الليلي"><svg><use href="#i-moon"/></svg></button>
       <div class="userchip" id="userChip"></div>
     </div>
   </div>
 </header>
+
+
+<!-- ================= تسجيل دخول الطالبة ================= -->
+<div class="logingate" id="loginGate" hidden>
+  <div class="lg-card">
+    <div class="lg-head">
+      <span class="brand-mark">نف</span>
+      <div>
+        <b>تدريب نافس علوم</b>
+        <small>إدارة تعليم جيزان · إعداد المعلمة: نعمة هرشان</small>
+      </div>
+    </div>
+    <h2>مرحباً بكِ 👋</h2>
+    <p class="muted">اختاري اسمك للمتابعة، أو سجّلي حساباً جديداً. تُحفظ بياناتك في هذا الجهاز فقط.</p>
+    <div class="lg-list" id="loginList"></div>
+    <div class="lg-sep"><span>أو تسجيل طالبة جديدة</span></div>
+    <div class="lg-form">
+      <input id="lgName" placeholder="اسم الطالبة">
+      <input id="lgSchool" placeholder="اسم المدرسة">
+      <input id="lgClass" placeholder="الصف">
+      <button class="btn btn-primary" id="lgAddBtn">تسجيل ودخول</button>
+    </div>
+  </div>
+</div>
 
 <main>
 <!-- ================= HUB ================= -->
@@ -75,9 +100,9 @@
   <div class="wrap">
     <div class="hero">
       <div class="hero-main">
-        <span class="tag tag-gold"><svg><use href="#i-sparkle"/></svg> تدريب نافس علوم — علوم الحياة و علوم الأرض والفضاء (3م) · إدارة تعليم مكة</span>
+        <span class="tag tag-gold"><svg><use href="#i-sparkle"/></svg> تدريب نافس علوم — علوم الحياة و علوم الأرض والفضاء (3م) · إدارة تعليم جيزان</span>
         <h1 id="heroTitle">أهلًا بكِ في تدريب نافس علوم 🌸</h1>
-        <p class="lead">تدريب مباشر على أسئلة <b>نافس</b> في علوم الحياة وعلوم الأرض والفضاء، مع <b>شرح المؤشر</b> و<b>التلميح</b> خطوة بخطوة، و<a href="#" data-sec="parent">متابعة ولي الأمر</a> لتدعيمك وتحفيزك.</p>
+        <p class="lead">تدريب مباشر على أسئلة <b>نافس</b> في علوم الحياة وعلوم الأرض والفضاء، مع <b>شرح المؤشر</b> و<b>التلميح</b> خطوة بخطوة، و<a href="#" data-sec="parent">متابعة ولي الأمر</a>.</p>
         <div class="hero-cta">
           <button class="btn btn-primary btn-lg" data-sec="train"><svg><use href="#i-play"/></svg> ابدئي التدريب الآن</button>
           <button class="btn btn-ghost btn-lg" id="dailyBtn"><svg><use href="#i-target"/></svg> تحدّي اليوم</button>
@@ -103,8 +128,8 @@
     </div>
 
     <div class="card" style="margin-top:18px">
-      <h3><svg><use href="#i-users"/></svg> هويتي داخل المنصة</h3>
-      <p class="muted">اكتبي اسمك ومدرستك ليظهر تقدمك في لوحة ولي الأمر، ولتحفظ شهاداتك.</p>
+      <h3><svg><use href="#i-users"/></svg> بياناتي في المنصة</h3>
+      <p class="muted">اكتبي اسمك ومدرستك ليظهر تقدمك في لوحة ولي الأمر، ولتحفظ شهاداتك وتقريرك.</p>
       <div class="row">
         <input id="pName" placeholder="الاسم الكامل" style="flex:1;min-width:190px">
         <input id="pSchool" placeholder="اسم المدرسة" style="flex:1;min-width:190px">
@@ -262,27 +287,49 @@
         <div id="uploadStatus"></div>
         <div id="uploadedList"></div>
       </div>
+
+      <div class="card" id="weeklyCard">
+        <h3><svg><use href="#i-chart"/></svg> التقرير الأسبوعي — إنجاز الطالبات ودخولهن</h3>
+        <p class="muted">تقرير للمعلمة عن كل الطالبات المسجلات على هذا الجهاز: نسبة الإنجاز والدقة وأيام الدخول وعدد الجلسات.</p>
+        <p class="muted" style="font-size:12.5px">ملاحظة: سجلات الطالبات محفوظة في هذا الجهاز. استخدمي «تصدير نسخة» لحفظها، و«استيراد نسخة» لدمج سجلات جهاز آخر في تقرير واحد.</p>
+        <div class="row wrap-sm wk-range">
+          <label>من <input type="date" id="wkFrom"></label>
+          <label>إلى <input type="date" id="wkTo"></label>
+          <button class="btn btn-soft" id="wkRefresh">تحديث</button>
+          <button class="btn btn-primary" id="printWeekly"><svg><use href="#i-print"/></svg> طباعة التقرير الأسبوعي / PDF</button>
+          <button class="btn btn-ghost" id="addStudentBtn">➕ تسجيل طالبة جديدة</button>
+          <button class="btn btn-ghost" id="exportData">⬇ تصدير نسخة</button>
+          <button class="btn btn-ghost" id="importData">⬆ استيراد نسخة</button>
+          <input type="file" id="importFile" accept="application/json" hidden>
+        </div>
+        <div class="grid-4" id="weeklyCards"></div>
+        <div id="weeklyTable"></div>
+        <h3 style="margin-top:18px"><svg><use href="#i-bulb"/></svg> مجالات تحتاج دعماً خلال هذه الفترة</h3>
+        <div id="weeklyWeak"></div>
+        <h3 style="margin-top:18px"><svg><use href="#i-users"/></svg> سجل الطالبات وإدارة الملفات</h3>
+        <div id="rosterList"></div>
+      </div>
     </div>
   </div>
 </section>
 </main>
 
 <footer class="appfoot">
-  <b>تدريب نافس علوم</b> — منصة تدريب للصف الثالث المتوسط · مبنية على أسئلة نافس (علوم الحياة 3م / علوم الأرض والفضاء 3م) مع شرح المؤشر وناتج التعلم · إدارة تعليم مكة · إعداد المعلمة: نعمة هرشان
+  <b>تدريب نافس علوم</b> — منصة تدريب للصف الثالث المتوسط · مبنية على أسئلة نافس (علوم الحياة 3م / علوم الأرض والفضاء 3م) مع شرح المؤشر وناتج التعلم · إدارة تعليم جيزان · إعداد المعلمة: نعمة هرشان
 </footer>
 
 <div class="toast" id="toast"></div>
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
 <div id="printArea" aria-hidden="true"></div>
-<script src="data-f11.js?v=10"></script>
-<script src="data-f12.js?v=10"></script>
-<script src="data-f13.js?v=10"></script>
-<script src="data-f14.js?v=10"></script>
-<script src="data-e31.js?v=10"></script>
-<script src="data-e32.js?v=10"></script>
-<script src="data-e33.js?v=10"></script>
-<script src="data-figs.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="data-f11.js?v=12"></script>
+<script src="data-f12.js?v=12"></script>
+<script src="data-f13.js?v=12"></script>
+<script src="data-f14.js?v=12"></script>
+<script src="data-e31.js?v=12"></script>
+<script src="data-e32.js?v=12"></script>
+<script src="data-e33.js?v=12"></script>
+<script src="data-figs.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
