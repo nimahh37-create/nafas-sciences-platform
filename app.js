@@ -1440,6 +1440,13 @@ function renderTeacher(){
   const A = buildAnalysis(from, to);
   const ss = $('#syncStatus');
   if(ss) ss.textContent = syncStatusText();
+  const sd = $('#syncDiag');
+  if(sd){
+    const zero = getRegistry().filter(x => !readUser(x.id, 'attempts', []).length).map(x => x.name);
+    sd.innerHTML = zero.length
+      ? '⚠️ طالبات مسجلات بلا محاولات محفوظة: <b>' + zero.map(esc).join('، ') + '</b> — إن كانت إحداهن تدرّبت، اطلبي منها فتح المنصة على نفس جهازها والضغط على «📤 إرسال كل إنجازاتي للمعلمة».'
+      : '✅ جميع الطالبات المسجلات لديهن محاولات محفوظة.';
+  }
   const sci = $('#syncCodeInput');
   if(sci && !sci.value) sci.value = syncCode();
   const T = A.totals;
@@ -2219,6 +2226,8 @@ function exportStudentData(){
 /* ---------- المزامنة السحابية: ظهور نتائج الطالبات مباشرة عند المعلمة ---------- */
 const SYNC_DEFAULT_CODE = 'nafas-jizan-2026';
 const SYNC = { last: 0, pulling: false, blockUntil: 0, lastFull: 0 };
+function appVersion(){ try { const s = document.querySelector('script[src*="app.js"]'); const m = /v=(\d+)/.exec(s.src); return m ? m[1] : '?'; } catch(e){ return '?'; } }
+(function(){ const v = $('#appVer'); if(v) v.textContent = 'v' + appVersion(); })();
 function syncCode(){ return (gRaw('nafas_sync_code', '') || SYNC_DEFAULT_CODE); }
 function saveSyncCode(c){ sRaw('nafas_sync_code', c || SYNC_DEFAULT_CODE); }
 function syncEnabled(){ return gRaw('nafas_sync_on', true) !== false; }
@@ -2360,6 +2369,20 @@ function resolveSyncId(id, name, school){
       sRaw('nafas_sync_alias', al);
       return twins[0].id;
     }
+    // اسم مختصر في سجل المعلمة (مثل «روزلين») يقابل الاسم الكامل القادم من جهاز الطالبة
+    const empties = reg.filter(x => x.id !== id && !readUser(x.id, 'attempts', []).length);
+    const pref = empties.filter(x => {
+      const a = normName(x.name);
+      if(!a || a.length < 3) return false;
+      const short = a.length < nm.length ? a : nm;
+      const long = a.length < nm.length ? nm : a;
+      return long.indexOf(short) === 0 && (long.length === short.length || long.charAt(short.length) === ' ');
+    });
+    if(pref.length === 1){
+      al[id] = pref[0].id;
+      sRaw('nafas_sync_alias', al);
+      return pref[0].id;
+    }
   }
   return id;
 }
@@ -2419,7 +2442,8 @@ function syncPull(full){
   if(SYNC.blockUntil && Date.now() < SYNC.blockUntil) return Promise.resolve(0);
   SYNC.pulling = true;
   if(full) SYNC.lastFull = Date.now();
-  const since = full ? 'all' : Math.floor((gRaw('nafas_sync_since', 0) || (Date.now() - 36 * 3600 * 1000)) / 1000);
+  const teacherOpen = $('#teacherPanel') && !$('#teacherPanel').hidden;
+  const since = full ? 'all' : (teacherOpen ? '30m' : Math.floor((gRaw('nafas_sync_since', 0) || (Date.now() - 36 * 3600 * 1000)) / 1000));
   return fetch(syncUrl('/json?poll=1&since=' + since), { headers:{ 'Accept':'application/json' } })
     .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
     .then(txt => {
@@ -2432,7 +2456,22 @@ function syncPull(full){
         let p; try { p = JSON.parse(m.message); } catch(e){ return; }
         if(p.t === 'rec' && p.rec && p.rec.id){
           if(!cache[p.rec.id]) cache[p.rec.id] = { rec:null, parts:{} };
-          cache[p.rec.id].rec = p.rec;
+          const prev = cache[p.rec.id].rec || {};
+          const next = Object.assign({}, prev, p.rec);
+          next.att = mergeAttemptLists(prev.att || [], p.rec.att || []);
+          if((!p.rec.progress || !Object.keys(p.rec.progress).length) && prev.progress) next.progress = prev.progress;
+          next.profile = Object.assign({}, prev.profile || {});
+          Object.keys(p.rec.profile || {}).forEach(k => { if(p.rec.profile[k]) next.profile[k] = p.rec.profile[k]; });
+          next.reads = Array.from(new Set([].concat(prev.reads || [], p.rec.reads || [])));
+          const lg = Object.assign({}, prev.logins || {});
+          Object.keys(p.rec.logins || {}).forEach(d => { lg[d] = Math.max(lg[d] || 0, p.rec.logins[d] || 0); });
+          next.logins = lg;
+          next.firstSeen = Math.min(prev.firstSeen || Infinity, p.rec.firstSeen || Infinity);
+          if(!isFinite(next.firstSeen)) next.firstSeen = p.rec.firstSeen || prev.firstSeen || Date.now();
+          next.lastSeen = Math.max(prev.lastSeen || 0, p.rec.lastSeen || 0);
+          next.sessions = Math.max(prev.sessions || 0, p.rec.sessions || 0);
+          ['name','school','cls','track'].forEach(k => { if(!next[k] && prev[k]) next[k] = prev[k]; });
+          cache[p.rec.id].rec = next;
           changed = true;
         } else if(p.t === 'att' && p.id){
           if(!cache[p.id]) cache[p.id] = { rec:null, parts:{} };
@@ -2494,7 +2533,12 @@ function startSyncLoop(){
 }
 let syncKeepTimer = null;
 let syncTimer = null;
-on('#syncNow', () => { syncPull(true).then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تمت استعادة آخر التحديثات والنتائج ✅' : 'لا جديد الآن'); }); });
+on('#syncNow', () => { syncPull(true).then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تمت استعادة ' + n + ' سجلاً من السحابة ✅' : 'لا جديد — تحققي من تفعيل المزامنة ورمز الصف'); }); });
+on('#appReload', () => {
+  const u = new URL(location.href);
+  u.searchParams.set('r', String(Date.now()));
+  location.href = u.toString();
+});
 on('#syncToggle', () => { setSyncEnabled(!syncEnabled()); renderTeacher(); toast(syncEnabled() ? 'تم تفعيل المزامنة ✅' : 'تم إيقاف المزامنة'); });
 on('#syncCopy', () => {
   const link = location.origin + location.pathname + '?code=' + encodeURIComponent(syncCode());

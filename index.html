@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css?v=35">
+<link rel="stylesheet" href="styles.css?v=36">
 </head>
 <body>
 
@@ -183,10 +183,14 @@
         <h3><svg><use href="#i-refresh"/></svg> المزامنة السحابية — عرض مباشر لنتائج الطالبات</h3>
         <p class="muted">عند تفعيلها، تُرسَل نتائج الطالبات ودخولهن تلقائياً إلى هذه الصفحة لحظة بلحظة، حتى لو تدرّبن على أجهزة مختلفة. تُحدَّث الصفحة تلقائياً كل ١٢ ثانية.</p>
         <p id="syncStatus" class="muted">…</p>
+        <p id="syncDiag" class="muted" style="font-size:12.5px"></p>
         <div class="toolbar-row">
-          <button class="btn btn-primary btn-sm" id="syncNow"><svg><use href="#i-refresh"/></svg> تحديث الآن</button>
+          <button class="btn btn-primary btn-sm" id="syncNow"><svg><use href="#i-refresh"/></svg> 🔄 تحديث/استعادة النتائج الآن</button>
           <button class="btn btn-soft btn-sm" id="syncCopy">📋 نسخ رابط الصف للطالبات</button>
           <button class="btn btn-ghost btn-sm" id="syncToggle">إيقاف/تشغيل المزامنة</button>
+          <button class="btn btn-ghost btn-sm" id="appReload" title="تحميل آخر نسخة من المنصة">🔄 تحديث المنصة</button>
+          <span class="muted" style="font-size:12px">الإصدار: <b id="appVer">…</b></span>
+        </div>
         </div>
         <div class="toolbar-row">
           <label class="wk-range">رمز الصف <input type="text" id="syncCodeInput" placeholder="مثال: nafas-jizan-2026" style="padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--ink);font-family:inherit"></label>
@@ -478,14 +482,14 @@
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
 <div id="printArea" aria-hidden="true"></div>
-<script src="data-f11.js?v=35"></script>
-<script src="data-f12.js?v=35"></script>
-<script src="data-f13.js?v=35"></script>
-<script src="data-f14.js?v=35"></script>
-<script src="data-e31.js?v=35"></script>
-<script src="data-e32.js?v=35"></script>
-<script src="data-e33.js?v=35"></script>
-<script src="data-figs.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="data-f11.js?v=36"></script>
+<script src="data-f12.js?v=36"></script>
+<script src="data-f13.js?v=36"></script>
+<script src="data-f14.js?v=36"></script>
+<script src="data-e31.js?v=36"></script>
+<script src="data-e32.js?v=36"></script>
+<script src="data-e33.js?v=36"></script>
+<script src="data-figs.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>
