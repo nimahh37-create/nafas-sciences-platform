@@ -834,7 +834,7 @@ function buildReport(){
   }));
 
   let html = '<div class="report">' +
-    '<div class="rep-head"><div><h1>تقرير التقدم الشامل</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
+    '<div class="rep-head"><div><h1>تقرير تقدم الطالبة</h1><p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
     '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
     '<div class="rep-meta"><div><b>الطالبة:</b> ' + name + '</div><div><b>المدرسة:</b> ' + school + '</div>' +
     '<div><b>التاريخ:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div><div><b>سجل التدريب:</b> ' + attempts.length + ' مهمة</div></div>' +
@@ -1043,6 +1043,7 @@ $('#sendMsgBtn').onclick = () => {
   renderHub();
 };
 $('#printReport').onclick = () => doPrint();
+$('#printClassReport').onclick = () => printWeekly();
 $('#repBtn').onclick = () => doPrint();
 $('#changePin').onclick = () => {
   const v = prompt('اكتبي الرمز الجديد (4 أرقام):');
@@ -1091,10 +1092,26 @@ function weekData(st, from, to){
   }));
   return { inWeek, mcqCount:mcq.length, totQ, totC, accuracy: pct(totC, totQ), loginDays, sessions, best, weak, allAttempts: at.length };
 }
+function resolveRange(from, to){
+  // إن كانت الفترة المختارة خالية من المحاولات، نوسّعها تلقائياً لتغطية كل الإنجازات
+  let anyIn = false, min = null, max = null;
+  getRegistry().forEach(st => {
+    readUser(st.id, 'attempts', []).forEach(a => {
+      if(!a.date) return;
+      if(!min || a.date < min) min = a.date;
+      if(!max || a.date > max) max = a.date;
+      if(a.date >= from && a.date <= to) anyIn = true;
+    });
+  });
+  if(!anyIn && min && (min < from || max > to)) return { from:min, to:max, widened:true };
+  return { from, to, widened:false };
+}
 function weeklyData(fromIn, toIn){
-  const from = fromIn || (($('#wkFrom') && $('#wkFrom').value) || defaultWeek().from);
-  const to = toIn || (($('#wkTo') && $('#wkTo').value) || defaultWeek().to);
-  return { from, to, rows: getRegistry().map(st => ({ st, w: weekData(st, from, to) })) };
+  let from = fromIn || (($('#wkFrom') && $('#wkFrom').value) || defaultWeek().from);
+  let to = toIn || (($('#wkTo') && $('#wkTo').value) || defaultWeek().to);
+  const rg = resolveRange(from, to);
+  from = rg.from; to = rg.to;
+  return { from, to, widened: rg.widened, rows: getRegistry().map(st => ({ st, w: weekData(st, from, to) })) };
 }
 function weekStatus(w){
   return !w.allAttempts ? 'لم تبدأ' : (w.accuracy >= 80 ? 'متميزة' : w.accuracy >= 60 ? 'جيدة' : 'تحتاج دعماً');
@@ -1159,6 +1176,7 @@ function buildWeeklyReport(fromIn, toIn){
     '<div><b>تاريخ الإصدار:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div>' +
     '<div><b>عدد الطالبات:</b> ' + rows.length + '</div>' +
     '<div><b>جلسات الدخول:</b> ' + sess + ' خلال ' + days + ' يوماً</div></div>' +
+    (rows.widened ? '<p class="rep-note">ملاحظة: وسّعتُ الفترة تلقائياً لتغطية كل الإنجازات المسجّلة للطالبات.</p>' : '') +
     '<div class="rep-kpis"><div><b>' + rows.length + '</b><span>طالبة</span></div>' +
     '<div><b>' + sess + '</b><span>جلسة دخول</span></div>' +
     '<div><b>' + att + '</b><span>محاولة</span></div>' +
@@ -1273,6 +1291,8 @@ function fieldOf(sub, code){
   return BANK[sub].fields.find(f => f.code === code) || null;
 }
 function buildAnalysis(from, to){
+  const rg = resolveRange(from, to);
+  from = rg.from; to = rg.to;
   const reg = getRegistry();
   const rows = reg.map(st => ({ st, w: weekData(st, from, to) }));
   const days = [];
@@ -1342,7 +1362,7 @@ function buildAnalysis(from, to){
 
   const ranking = rows.slice().sort((a, b) => (b.w.accuracy - a.w.accuracy) || (b.w.inWeek.length - a.w.inWeek.length));
 
-  return { from, to, rows, days, trend, fields, dist, indicators, ranking,
+  return { from, to, widened: rg.widened, rows, days, trend, fields, dist, indicators, ranking,
     totals:{ students: rows.length, sessions, loginDays, att, mcqAtt, figAtt, taskAtt, certs,
              accuracy: pct(correct, total), totalQ: total, totalC: correct } };
 }
@@ -1364,7 +1384,7 @@ function renderTeacher(){
   const sci = $('#syncCodeInput');
   if(sci && !sci.value) sci.value = syncCode();
   const T = A.totals;
-  $('#tpRangeTxt').textContent = 'الفترة: ' + from + ' — ' + to;
+  $('#tpRangeTxt').textContent = 'الفترة: ' + A.from + ' — ' + A.to + (A.widened ? '  (تم توسيعها تلقائياً لأن هناك إنجازات خارج الفترة المختارة)' : '');
 
   $('#tpCards').innerHTML =
     '<div class="kpi"><b>' + T.students + '</b><small>طالبة مسجلة</small></div>' +
@@ -1508,6 +1528,7 @@ function buildAnalysisReport(){
     '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
     '<div class="rep-meta"><div><b>الفترة:</b> ' + from + ' — ' + to + '</div><div><b>تاريخ الإصدار:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div>' +
     '<div><b>الطالبات:</b> ' + T.students + '</div><div><b>جلسات الدخول:</b> ' + T.sessions + ' (' + T.loginDays + ' يوماً)</div></div>' +
+    (A.widened ? '<p class="rep-note">ملاحظة: وسّعتُ الفترة تلقائياً لتغطية كل الإنجازات المسجّلة.</p>' : '') +
     '<div class="rep-kpis"><div><b>' + T.students + '</b><span>طالبة</span></div>' +
     '<div><b>' + T.att + '</b><span>محاولة</span></div>' +
     '<div><b>' + T.accuracy + '%</b><span>متوسط الدقة</span></div>' +
