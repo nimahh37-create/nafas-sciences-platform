@@ -105,7 +105,7 @@ function activateUser(id){
   $('#loginGate').hidden = true;
   renderAll();
   syncPushSoon();
-  const un = unreadFor(U.id);
+  const un = unreadFor(U.id, profile.name);
   toast(un ? 'أهلًا ' + (profile.name || '') + ' 👋 — لديك ' + un + ' رسالة من معلمة 📩' : 'أهلًا ' + (profile.name || '') + ' 👋');
 }
 function addStudent(){
@@ -877,6 +877,12 @@ function buildReport(){
   return html;
 }
 function doPrint(){
+  // إن لم تكن هناك طالبة مسجّلة (وضع المعلمة) نطبع تقرير الصف الأسبوعي بدل تقرير فارغ
+  if(!attempts.length && getRegistry().length){
+    printWeekly();
+    toast('تم تجهيز تقرير الصف الأسبوعي 📄');
+    return;
+  }
   $('#printArea').innerHTML = buildReport();
   document.body.classList.add('printing');
   setTimeout(() => { window.print(); }, 120);
@@ -1085,9 +1091,9 @@ function weekData(st, from, to){
   }));
   return { inWeek, mcqCount:mcq.length, totQ, totC, accuracy: pct(totC, totQ), loginDays, sessions, best, weak, allAttempts: at.length };
 }
-function weeklyData(){
-  const from = ($('#wkFrom') && $('#wkFrom').value) || defaultWeek().from;
-  const to = ($('#wkTo') && $('#wkTo').value) || defaultWeek().to;
+function weeklyData(fromIn, toIn){
+  const from = fromIn || (($('#wkFrom') && $('#wkFrom').value) || defaultWeek().from);
+  const to = toIn || (($('#wkTo') && $('#wkTo').value) || defaultWeek().to);
   return { from, to, rows: getRegistry().map(st => ({ st, w: weekData(st, from, to) })) };
 }
 function weekStatus(w){
@@ -1139,8 +1145,8 @@ function renderRoster(){
     if(U.id === id) switchUser(); else renderWeekly();
   });
 }
-function buildWeeklyReport(){
-  const { from, to, rows } = weeklyData();
+function buildWeeklyReport(fromIn, toIn){
+  const { from, to, rows } = weeklyData(fromIn, toIn);
   const att = rows.reduce((s,r)=>s+r.w.inWeek.length,0);
   const sess = rows.reduce((s,r)=>s+r.w.sessions,0);
   const days = rows.reduce((s,r)=>s+r.w.loginDays.length,0);
@@ -1177,8 +1183,8 @@ function buildWeeklyReport(){
     '<p class="rep-foot">تقرير صادر من منصة «تدريب نافس علوم» — إدارة تعليم جيزان — إعداد المعلمة نعمة هرشان.</p></div>';
   return html;
 }
-function printWeekly(){
-  $('#printArea').innerHTML = buildWeeklyReport();
+function printWeekly(fromIn, toIn){
+  $('#printArea').innerHTML = buildWeeklyReport(fromIn, toIn);
   document.body.classList.add('printing');
   setTimeout(() => { window.print(); }, 120);
 }
@@ -1410,9 +1416,7 @@ function renderTeacher(){
       '<td class="tp-send"><select data-track="' + r.st.id + '"><option value="">متوازنة</option>' +
       '<option value="remedial"' + (r.st.track === 'remedial' ? ' selected' : '') + '>تحتاج علاجي</option>' +
       '<option value="enrichment"' + (r.st.track === 'enrichment' ? ' selected' : '') + '>إثرائي</option></select>' +
-      '<button class="btn btn-soft btn-sm" data-sendrem="' + r.st.id + '">📩 علاجي</button> ' +
-      '<button class="btn btn-soft btn-sm" data-senden="' + r.st.id + '">📩 إثرائي</button> ' +
-      '<button class="btn btn-ghost btn-sm" data-sendnote="' + r.st.id + '">✉ إشعار</button></td></tr>').join('') + '</table></div>'
+      '<button class="btn btn-soft btn-sm" data-sendmenu="' + r.st.id + '">📩 إرسال</button></td></tr>').join('') + '</table></div>'
     : '<div class="empty">لا توجد طالبات مسجلات على هذا الجهاز.</div>';
   $('#tpStudents').querySelectorAll('[data-detail]').forEach(b => b.onclick = () => renderStudentDetail(b.dataset.detail));
   $('#tpStudents').querySelectorAll('[data-openst]').forEach(b => b.onclick = () => { activateUser(b.dataset.openst); $('#teacherPanel').hidden = true; go('hub'); });
@@ -1421,9 +1425,7 @@ function renderTeacher(){
     const st2 = reg.find(x => x.id === s.dataset.track);
     if(st2){ st2.track = s.value; saveRegistry(reg); toast('مسار ' + st2.name + ': ' + (TRACK_LABEL[s.value] || 'متوازنة')); renderTeacher(); }
   });
-  $('#tpStudents').querySelectorAll('[data-sendrem]').forEach(b => b.onclick = () => openSendPlan(b.dataset.sendrem, 'remedial'));
-  $('#tpStudents').querySelectorAll('[data-senden]').forEach(b => b.onclick = () => openSendPlan(b.dataset.senden, 'enrichment'));
-  $('#tpStudents').querySelectorAll('[data-sendnote]').forEach(b => b.onclick = () => openSendPlan(b.dataset.sendnote, 'note'));
+  $('#tpStudents').querySelectorAll('[data-sendmenu]').forEach(b => b.onclick = () => openSendMenu(b.dataset.sendmenu));
   renderSent();
 
   renderStudentDetail(A.rows.length ? A.rows[0].st.id : null, A);
@@ -1630,7 +1632,7 @@ on('#teacherBtn', () => openTeacher());
 on('#tpClose', () => { $('#teacherPanel').hidden = true; if(!U.id) renderLoginGate(); });
 on('#teacherPinBtn', () => teacherLogin());
 on('#tpRefresh', () => { renderTeacher(); toast('تم تحديث التحليل ✅'); });
-on('#tpWeekly', () => printWeekly());
+on('#tpWeekly', () => printWeekly(($('#tpFrom') || {}).value, ($('#tpTo') || {}).value));
 on('#tpPrintAnalysis', () => printAnalysis());
 on('#tpPrintPlan', () => printImprovement());
 on('#tpExport', () => exportData());
@@ -1645,8 +1647,10 @@ if(tpin) tpin.addEventListener('keydown', e => { if(e.key === 'Enter') teacherLo
 const getPlans = () => gRaw('nafas_plans', []);
 const savePlans = (p) => sRaw('nafas_plans', p);
 const TRACK_LABEL = { '':'متوازنة', remedial:'تحتاج علاجي', enrichment:'إثرائي' };
-function studentPlanList(sid){ return getPlans().filter(p => p.sid === sid).slice().reverse(); }
-function unreadFor(sid){ return studentPlanList(sid).filter(p => !p.read).length; }
+function studentPlanList(sid, nm){
+  return getPlans().filter(p => p.sid === sid || (nm && p.name && p.name === nm)).slice().reverse();
+}
+function unreadFor(sid, nm){ return studentPlanList(sid, nm).filter(p => !p.read).length; }
 function studentFields(sid){
   const all = readUser(sid, 'attempts', []);
   const prog = readUser(sid, 'progress', {});
@@ -1714,16 +1718,72 @@ function buildEnrichmentPlan(sid){
 }
 function buildNotePlan(sid){
   const st = getRegistry().find(x => x.id === sid);
-  return { title:'إشعار من المعلمة', text: 'أهلاً ' + ((st && st.name) || '') + ' — أحببتُ أن أبارك إنجازك، وواصلتِ التدريب بثقة ✨\nفقط أذكّركِ بالهدف الأسبوعي: 10 أسئلة يومياً + مهمة مؤشر.\nمعلمة: نعمة هرشان' };
+  return { title:'رسالة من المعلمة', text: 'أهلاً ' + ((st && st.name) || '') + ' — أحببتُ أن أبارك إنجازك، وواصلتِ التدريب بثقة ✨\nفقط أذكّركِ بالهدف الأسبوعي: 10 أسئلة يومياً + مهمة مؤشر.\nمعلمة: نعمة هرشان' };
+}
+function buildAchievementPlan(sid){
+  const st = getRegistry().find(x => x.id === sid);
+  const rows = studentFields(sid).slice().sort((a, b) => b.best - a.best);
+  const all = readUser(sid, 'attempts', []);
+  const certs = all.filter(a => a.score >= 60).length;
+  const mcq = all.filter(a => a.mode === 'mcq');
+  const totQ = mcq.reduce((s, a) => s + (a.total || 0), 0);
+  const totC = mcq.reduce((s, a) => s + (a.correct || 0), 0);
+  const acc = pct(totC, totQ);
+  const best = rows[0];
+  let text = 'مبروك ' + ((st && st.name) || '') + '! 🎉\n\n';
+  text += 'منجزكِ ممتاز: متوسط دقتك ' + acc + '%';
+  if(certs) text += '، وجمعتِ ' + certs + ' شهادة إنجاز';
+  text += '.\n';
+  if(best) text += 'أعلى نتيجة لك في مجال ' + best.f.code + ' (' + best.f.title + ') بـ ' + best.best + '%.\n';
+  text += 'استمري على هذا المنوال، وأضع لكِ تحدياً إثرائياً جديداً هذا الأسبوع.\n\n';
+  text += 'معلمة: نعمة هرشان';
+  return { title:'إشعار إنجاز 🎉', text };
+}
+function buildStrugglePlan(sid){
+  const st = getRegistry().find(x => x.id === sid);
+  const rows = studentFields(sid).slice().sort((a, b) => a.last - b.last);
+  const w = rows.find(r => r.last < 80) || rows[0];
+  let text = 'أهلاً ' + ((st && st.name) || '') + ' — لاحظتُ نقطة تحتاج انتباهك ⚠️\n\n';
+  if(w) text += 'أصعب مجال لديك حالياً: ' + w.f.code + ' (' + w.f.title + ') وآخر نتيجة فيه ' + w.last + '%.\n';
+  text += 'لا بأس أبداً، والتعثر بداية تحسين:\n';
+  text += '1) راجعي شرح الأسئلة الخاطئة في صفحة «إنجازي».\n';
+  text += '2) أكملي مهمة مؤشر واحدة يومياً (5 دقائق).\n';
+  text += '3) أعيدي الاختبار واستهدفي +10 درجات، ثم أخبريني بالنتيجة.\n\n';
+  text += 'أنا معكِ — معلمة: نعمة هرشان';
+  return { title:'إشعار تعثّر ⚠️', text };
+}
+const SEND_OPTIONS = [
+  { k:'achievement', i:'🎉', t:'إشعار إنجاز', d:'تهنئة بالإنجاز وتحصيد ما أنجزتِه' },
+  { k:'struggle', i:'⚠️', t:'إشعار تعثّر', d:'تنبيه لطالبة تحتاج دعماً فورياً' },
+  { k:'remedial', i:'💊', t:'خطة علاجية', d:'مؤشرات مستهدفة + أسئلة خاطئة + هدف رقمي' },
+  { k:'enrichment', i:'🌟', t:'خطة إثرائية', d:'مهام إثرائية وتحليل أعمق للمتميزات' },
+  { k:'note', i:'💬', t:'رسالة / ملاحظة', d:'رسالة عامة أو تشجيع' }
+];
+function openSendMenu(sid){
+  const st = getRegistry().find(x => x.id === sid);
+  if(!st){ toast('لا توجد بيانات الطالبة'); return; }
+  const box = $('#modalBox');
+  box.innerHTML = '<h3>📩 إرسال إلى: ' + esc(st.name) + '</h3>' +
+    '<p class="muted">اختاري نوع الرسالة — النص جاهز تلقائياً من بيانات الطالبة ويمكنك تعديله قبل الإرسال.</p>' +
+    '<div class="send-menu">' + SEND_OPTIONS.map(o =>
+      '<button class="send-opt" data-k="' + o.k + '"><span class="so-i">' + o.i + '</span><span class="so-t"><b>' + o.t + '</b><small>' + o.d + '</small></span></button>').join('') + '</div>' +
+    '<div class="qfoot" style="justify-content:center"><button class="btn btn-ghost" id="sendMenuClose">إغلاق</button></div>';
+  $('#modal').hidden = false;
+  $('#sendMenuClose').onclick = () => { $('#modal').hidden = true; };
+  box.querySelectorAll('.send-opt').forEach(b => b.onclick = () => { openSendPlan(sid, b.dataset.k); });
 }
 function openSendPlan(sid, type){
   const st = getRegistry().find(x => x.id === sid);
   if(!st) return;
-  const plan = type === 'remedial' ? buildRemedialPlan(sid) : type === 'enrichment' ? buildEnrichmentPlan(sid) : buildNotePlan(sid);
+  const plan = type === 'remedial' ? buildRemedialPlan(sid)
+             : type === 'enrichment' ? buildEnrichmentPlan(sid)
+             : type === 'achievement' ? buildAchievementPlan(sid)
+             : type === 'struggle' ? buildStrugglePlan(sid)
+             : buildNotePlan(sid);
   const box = $('#modalBox');
-  box.innerHTML = '<div class="plan-send"><h3>📩 ' + plan.title + ' — ' + esc(st.name) + '</h3>' +
+  box.innerHTML = '<div class="plan-send"><h3>' + plan.title + ' — ' + esc(st.name) + '</h3>' +
     '<p class="muted">سيظهر النص في «لوحتي» عند الطالبة مع إشعار، ويمكنك تعديله قبل الإرسال.</p>' +
-    '<textarea id="planText" rows="11">' + esc(plan.text) + '</textarea>' +
+    '<textarea id="planText" rows="12">' + esc(plan.text) + '</textarea>' +
     '<div class="qfoot" style="justify-content:center"><button class="btn btn-primary" id="planSendBtn">إرسال إلى الطالبة</button>' +
     '<button class="btn btn-ghost" id="planCancel">إلغاء</button></div></div>';
   $('#modal').hidden = false;
@@ -1732,14 +1792,16 @@ function openSendPlan(sid, type){
     const txt = $('#planText').value.trim();
     if(!txt){ toast('اكتبي نص الرسالة ✍️'); return; }
     const list = getPlans();
-    list.push({ id:'p' + Date.now(), sid, type, title:plan.title, text:txt, date:today(),
-                time:new Date().toLocaleTimeString('ar-SA'), read:false });
+    const rec = { id:'p' + Date.now() + '-' + Math.floor(Math.random() * 900), sid, name:st.name, type,
+      title:plan.title, text:txt, date:today(), time:new Date().toLocaleTimeString('ar-SA'), read:false };
+    list.push(rec);
     savePlans(list);
-    if(type === 'remedial' || type === 'enrichment'){
+    if(type === 'remedial' || type === 'enrichment' || type === 'struggle'){
       const reg = getRegistry();
       const s2 = reg.find(x => x.id === sid);
-      if(s2){ s2.track = type; saveRegistry(reg); }
+      if(s2){ s2.track = (type === 'enrichment') ? 'enrichment' : 'remedial'; saveRegistry(reg); }
     }
+    if(typeof syncPushPlan === 'function') syncPushPlan(rec);
     $('#modal').hidden = true;
     renderTeacher(); renderSent(); renderInbox();
     toast('تم إرسال ' + plan.title + ' إلى ' + st.name + ' ✅');
@@ -1779,7 +1841,7 @@ function markPlanRead(id){
 function renderInbox(){
   const box = $('#inboxList');
   if(!box) return;
-  const list = studentPlanList(U.id);
+  const list = studentPlanList(U.id, profile.name);
   const st = getRegistry().find(x => x.id === U.id);
   const track = st ? (st.track || '') : '';
   const head = st ? '<p class="muted" style="margin:0 0 8px">مسارك الحالي: <b>' + (TRACK_LABEL[track] || 'متوازنة') + '</b></p>' : '';
@@ -1792,14 +1854,14 @@ function renderInbox(){
   box.querySelectorAll('[data-read]').forEach(b => b.onclick = () => { markPlanRead(b.dataset.read); renderInbox(); renderBell(); });
 }
 function renderBell(){
-  const n = unreadFor(U.id);
+  const n = unreadFor(U.id, profile.name);
   const dot = $('#bellDot');
   if(dot){ dot.hidden = n === 0; dot.textContent = n; }
   const btn = $('#bellBtn');
   if(btn) btn.classList.toggle('has', n > 0);
 }
 function openInbox(){
-  const list = studentPlanList(U.id);
+  const list = studentPlanList(U.id, profile.name);
   const box = $('#modalBox');
   box.innerHTML = '<h3>📬 لوحتي — الخطة والإشعارات</h3>' +
     (list.length ? list.map(p => '<div class="plan-msg ' + p.type + '"><div class="pm-head"><b>' + esc(p.title) + '</b><small>' + p.date + '</small></div><div class="pm-text">' + esc(p.text) + '</div></div>').join('')
@@ -1905,7 +1967,7 @@ function exportStudentData(){
 }
 /* ---------- المزامنة السحابية: ظهور نتائج الطالبات مباشرة عند المعلمة ---------- */
 const SYNC_DEFAULT_CODE = 'nafas-jizan-2026';
-const SYNC = { last: 0, pulling: false };
+const SYNC = { last: 0, pulling: false, blockUntil: 0 };
 function syncCode(){ return (gRaw('nafas_sync_code', '') || SYNC_DEFAULT_CODE); }
 function saveSyncCode(c){ sRaw('nafas_sync_code', c || SYNC_DEFAULT_CODE); }
 function syncEnabled(){ return gRaw('nafas_sync_on', true) !== false; }
@@ -1935,10 +1997,29 @@ function studentCompact(){
     profile:readUser(U.id, 'profile', {}), progress:prog, n:att.length };
 }
 function postMsg(body, title){
+  // طلب بسيط (بدون ترويسات مخصّصة) لتجنّب preflight ومنع حجب CORS
   try{
-    fetch(syncUrl(''), { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8', 'Title':title }, body:body })
-      .catch(() => {});
-  }catch(e){}
+    return fetch(syncUrl(''), { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body:body })
+      .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return true; })
+      .catch(() => { syncQueuePush(body); return false; });
+  }catch(e){ syncQueuePush(body); return false; }
+}
+function syncQueue(){ return gRaw('nafas_sync_queue', []); }
+function syncQueuePush(body){
+  const q = syncQueue();
+  q.push(body);
+  sRaw('nafas_sync_queue', q.slice(-30));
+}
+function syncFlushQueue(){
+  const q = syncQueue();
+  if(!q.length) return;
+  const rest = [];
+  q.forEach(body => {
+    fetch(syncUrl(''), { method:'POST', headers:{ 'Content-Type':'text/plain;charset=utf-8' }, body })
+      .then(r => { if(!r.ok) rest.push(body); })
+      .catch(() => rest.push(body));
+  });
+  setTimeout(() => { sRaw('nafas_sync_queue', rest); }, 2500);
 }
 let syncPushTimer = null;
 function syncPush(){
@@ -1947,25 +2028,27 @@ function syncPush(){
   if(!rec) return;
   const att = readUser(U.id, 'attempts', []).map(a => ({ mode:a.mode, subject:a.subject, field:a.field, title:a.title,
     score:a.score, correct:a.correct, total:a.total, answered:a.answered || 0, hints:a.hints || 0, retry:!!a.retry,
-    wrong:(a.wrong || []).slice(0, 12), date:a.date, time:a.time || '' }));
-  const CH = 8, parts = [];
-  for(let i = 0; i < att.length; i += CH) parts.push(att.slice(i, i + CH));
-  rec.n = att.length; rec.parts = parts.length;
-  const head = JSON.stringify({ t:'rec', rec });
-  if(head.length > 3600){
-    rec.logins = {}; rec.progress = {};
-    const h2 = JSON.stringify({ t:'rec', rec });
-    postMsg(h2.length > 3600 ? JSON.stringify({ t:'rec', rec:{ id:rec.id, name:rec.name, school:rec.school, cls:rec.cls, track:rec.track, firstSeen:rec.firstSeen, lastSeen:rec.lastSeen, sessions:rec.sessions, n:rec.n, parts:rec.parts } }) : h2, 'nafas-rec');
-  } else {
-    postMsg(head, 'nafas-rec');
+    wrong:(a.wrong || []).slice(0, 10), date:a.date, time:a.time || '' }));
+  rec.n = att.length;
+  // رسالة واحدة مضغوطة (الخدمة تحدّ الطلبات، فنرسل رسالة واحدة كل مرة)
+  let items = att.slice(-12);
+  let body = JSON.stringify({ t:'rec', rec: Object.assign({}, rec, { att: items }) });
+  while(body.length > 3400 && items.length > 1){
+    items = items.slice(Math.ceil(items.length / 2));
+    body = JSON.stringify({ t:'rec', rec: Object.assign({}, rec, { att: items }) });
   }
-  parts.forEach((items, i) => postMsg(JSON.stringify({ t:'att', id:rec.id, part:i, items }), 'nafas-att'));
+  if(body.length > 3400){
+    const light = Object.assign({}, rec);
+    delete light.logins; light.progress = {};
+    body = JSON.stringify({ t:'rec', rec: light });
+  }
+  postMsg(body, 'rec');
   SYNC.last = Date.now();
   sRaw('nafas_sync_last', SYNC.last);
 }
 function syncPushSoon(){
   if(syncPushTimer) clearTimeout(syncPushTimer);
-  syncPushTimer = setTimeout(() => { syncPushTimer = null; syncPush(); }, 900);
+  syncPushTimer = setTimeout(() => { syncPushTimer = null; syncPush(); }, 3000);
 }
 function materializeSync(id){
   const cache = gRaw('nafas_sync_cache', {});
@@ -1993,7 +2076,8 @@ function materializeSync(id){
     const parts = c.parts || {};
     const atts = [];
     Object.keys(parts).map(Number).sort((a, b) => a - b).forEach(i => (parts[i] || []).forEach(a => atts.push(a)));
-    if(atts.length) writeUser(id, 'attempts', atts);
+    if(rec.att && rec.att.length) writeUser(id, 'attempts', rec.att);
+    else if(atts.length) writeUser(id, 'attempts', atts);
     if(rec.progress && Object.keys(rec.progress).length){
       const prog = {};
       Object.keys(rec.progress).forEach(k => { const p = rec.progress[k];
@@ -2007,10 +2091,11 @@ function materializeSync(id){
 }
 function syncPull(){
   if(!syncEnabled() || SYNC.pulling) return Promise.resolve(0);
+  if(SYNC.blockUntil && Date.now() < SYNC.blockUntil) return Promise.resolve(0);
   SYNC.pulling = true;
   const since = Math.floor((gRaw('nafas_sync_since', 0) || (Date.now() - 36 * 3600 * 1000)) / 1000);
   return fetch(syncUrl('/json?poll=1&since=' + since), { headers:{ 'Accept':'application/json' } })
-    .then(r => r.text())
+    .then(r => { if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
     .then(txt => {
       const lines = String(txt || '').split('\n').filter(Boolean);
       const cache = gRaw('nafas_sync_cache', {});
@@ -2028,6 +2113,13 @@ function syncPull(){
           cache[p.id].parts = cache[p.id].parts || {};
           cache[p.id].parts[p.part] = p.items;
           changed = true;
+        } else if(p.t === 'plan' && p.plan && p.plan.id){
+          const pl = getPlans();
+          if(!pl.some(x => x.id === p.plan.id)){
+            pl.push(p.plan);
+            savePlans(pl);
+            changed = true;
+          }
         }
       });
       if(changed) sRaw('nafas_sync_cache', cache);
@@ -2037,7 +2129,7 @@ function syncPull(){
       sRaw('nafas_sync_last', SYNC.last);
       return changed ? lines.length : 0;
     })
-    .catch(() => 0)
+    .catch(() => { SYNC.blockUntil = Date.now() + 60000; return 0; })
     .then(v => { SYNC.pulling = false; return v; });
 }
 function syncStatusText(){
@@ -2046,13 +2138,21 @@ function syncStatusText(){
   const t = last ? new Date(last).toLocaleTimeString('ar-SA') : '—';
   return (on ? '✅ المزامنة مفعّلة' : '⛔ المزامنة متوقفة') + ' • رمز الصف: ' + syncCode() + ' • آخر تحديث: ' + t;
 }
+function syncPushPlan(plan){
+  if(!syncEnabled() || !plan) return;
+  postMsg(JSON.stringify({ t:'plan', plan: plan }), 'nafas-plan');
+}
 function startSyncLoop(){
   if(syncTimer) clearInterval(syncTimer);
   syncTimer = setInterval(() => {
-    if($('#teacherPanel') && !$('#teacherPanel').hidden){
+    syncFlushQueue();
+    const teacherOpen = $('#teacherPanel') && !$('#teacherPanel').hidden;
+    if(teacherOpen){
       syncPull().then(() => { if(typeof renderTeacher === 'function') renderTeacher(); });
+    } else if(U.id){
+      syncPull().then(() => { renderInbox(); renderBell(); });
     }
-  }, 9000);
+  }, 20000);
 }
 let syncTimer = null;
 on('#syncNow', () => { syncPull().then(n => { if(typeof renderTeacher === 'function') renderTeacher(); toast(n ? 'تم تحديث النتائج من الطالبات ✅' : 'لا جديد الآن'); }); });
