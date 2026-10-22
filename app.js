@@ -52,18 +52,36 @@ function logLogin(){
   saveRegistry(reg);
 }
 function migrateLegacy(){
-  if(localStorage.getItem('nafas_registry')) return;
-  const legacy = gRaw('nafes_profile', null);
-  if(!legacy) return;
-  const id = 'u' + Date.now();
-  const st = { id, name: legacy.name || 'طالبة', school: legacy.school || '', cls:'',
-               firstSeen:Date.now(), lastSeen:Date.now(), sessions:1, logins:{} };
-  st.logins[today()] = 1;
-  saveRegistry([st]);
-  const map = { nafas_profile:'profile', nafas_progress:'progress', nafas_attempts:'attempts', nafas_msg:'msg', nafas_goal:'goal' };
-  Object.keys(map).forEach(k => { const v = localStorage.getItem(k); if(v) writeUser(id, map[k], JSON.parse(v)); });
-  localStorage.setItem('nafas_active', id);
-  U.id = id;
+  const legacyMap = { nafas_profile:'profile', nafas_progress:'progress', nafas_attempts:'attempts', nafas_msg:'msg', nafas_goal:'goal' };
+  if(!localStorage.getItem('nafas_registry')){
+    const legacy = gRaw('nafes_profile', null);
+    if(!legacy) return;
+    const id = 'u' + Date.now();
+    const st = { id, name: legacy.name || 'طالبة', school: legacy.school || '', cls:'',
+                 firstSeen:Date.now(), lastSeen:Date.now(), sessions:1, logins:{} };
+    st.logins[today()] = 1;
+    saveRegistry([st]);
+    Object.keys(legacyMap).forEach(k => { const v = localStorage.getItem(k); if(v) writeUser(id, legacyMap[k], JSON.parse(v)); });
+    localStorage.setItem('nafas_active', id);
+    U.id = id;
+    return;
+  }
+  // سجل طالبات موجود مسبقاً: ننسب أي إنجاز قديم (قبل نظام تعدد الطالبات) للطالبة النشطة
+  const legacyAttempts = gRaw('nafes_attempts', []);
+  if(!legacyAttempts.length) return;
+  const reg = getRegistry();
+  const target = reg.find(x => x.id === U.id) || reg[0];
+  if(!target) return;
+  if(readUser(target.id, 'attempts', []).length){
+    Object.keys(legacyMap).forEach(k => localStorage.removeItem(k));
+    return;
+  }
+  writeUser(target.id, 'attempts', legacyAttempts);
+  const lp = gRaw('nafes_profile', null);
+  if(lp && !readUser(target.id, 'profile', {}).name) writeUser(target.id, 'profile', lp);
+  const lprog = gRaw('nafes_progress', null);
+  if(lprog && !Object.keys(readUser(target.id, 'progress', {})).length) writeUser(target.id, 'progress', lprog);
+  Object.keys(legacyMap).forEach(k => localStorage.removeItem(k));
 }
 function renderLoginGate(){
   const list = $('#loginList');
@@ -1203,13 +1221,15 @@ function importData(file){
         if(st.progress) writeUser(t.id, 'progress', st.progress);
       });
       saveRegistry(reg);
+      const added = (data.students || []).length;
       const ups = gRaw('nafas_uploads', []);
       (data.uploads || []).forEach(u => {
         if(!ups.some(x => x.date === u.date && x.student === u.student && x.exam === u.exam)) ups.push(u);
       });
       sRaw('nafas_uploads', ups);
       renderWeekly(); renderUploaded();
-      toast('تم استيراد البيانات ✅');
+      if(typeof renderTeacher === 'function') renderTeacher();
+      toast('تم استيراد سجلات ' + added + ' طالبة ✅');
     }catch(e){ toast('تعذر قراءة الملف ❌'); }
   };
   fr.readAsText(file);
@@ -1318,8 +1338,15 @@ function buildAnalysis(from, to){
 function anaBar(v, color){ return '<div class="ana-bar"><i style="width:' + Math.max(2, Math.min(100, v)) + '%;background:' + (color || '#6d28d9') + '"></i></div>'; }
 function scoreColor(v){ return v >= 80 ? '#059669' : v >= 60 ? '#d97706' : '#dc2626'; }
 function renderTeacher(){
-  const from = ($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from;
-  const to = ($('#tpTo') && $('#tpTo').value) || defaultWeek().to;
+  const all = $('#tpAllTime') && $('#tpAllTime').checked;
+  const rng = all ? allTimeRange() : { from:($('#tpFrom') && $('#tpFrom').value) || defaultWeek().from,
+                                      to:($('#tpTo') && $('#tpTo').value) || defaultWeek().to };
+  if(all){
+    const f = $('#tpFrom'), t2 = $('#tpTo');
+    if(f) f.value = rng.from;
+    if(t2) t2.value = rng.to;
+  }
+  const from = rng.from, to = rng.to;
   const A = buildAnalysis(from, to);
   const T = A.totals;
   $('#tpRangeTxt').textContent = 'الفترة: ' + from + ' — ' + to;
@@ -1365,12 +1392,12 @@ function renderTeacher(){
     : '<div class="empty">لا توجد أخطاء متكررة في هذه الفترة 🌟</div>';
 
   // جدول الطالبات
-  $('#tpStudents').innerHTML = A.rows.length ? '<div class="tp-table"><table><tr><th>الطالبة</th><th>المدرسة</th><th>أيام الدخول</th><th>الجلسات</th><th>آخر دخول</th><th>محاولات</th><th>الدقة</th><th>أفضل نتيجة</th><th>الحالة</th><th>المسار والإرسال</th></tr>' +
+  $('#tpStudents').innerHTML = A.rows.length ? '<div class="tp-table"><table><tr><th>الطالبة</th><th>المدرسة</th><th>أيام الدخول</th><th>الجلسات</th><th>آخر دخول</th><th>محاولات</th><th>الدقة</th><th>أفضل نتيجة</th><th>كل المحاولات</th><th>الحالة</th><th>المسار والإرسال</th></tr>' +
     A.rows.map(r => '<tr><td><b>' + esc(r.st.name) + '</b></td><td>' + esc(r.st.school || '—') + '</td>' +
       '<td>' + r.w.loginDays.length + '</td><td>' + r.w.sessions + '</td>' +
       '<td>' + (r.st.lastSeen ? new Date(r.st.lastSeen).toLocaleDateString('ar-SA') : '—') + '</td>' +
       '<td>' + r.w.inWeek.length + '</td><td>' + (r.w.mcqCount ? r.w.accuracy + '%' : '—') + '</td>' +
-      '<td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + weekStatus(r.w) + '</td>' +
+      '<td>' + (r.w.best ? r.w.best + '%' : '—') + '</td><td>' + r.w.allAttempts + '</td><td>' + weekStatus(r.w) + '</td>' +
       '<td class="tp-send"><select data-track="' + r.st.id + '"><option value="">متوازنة</option>' +
       '<option value="remedial"' + (r.st.track === 'remedial' ? ' selected' : '') + '>تحتاج علاجي</option>' +
       '<option value="enrichment"' + (r.st.track === 'enrichment' ? ' selected' : '') + '>إثرائي</option></select>' +
@@ -1836,9 +1863,36 @@ on('#roleStudent', () => showLoginRole('student'));
 on('#roleTeacher', () => showLoginRole('teacher'));
 on('#lgBackRoles', () => showLoginRole(''));
 on('#lgTeacherGo', () => teacherGateLogin());
+on('#exportMine', () => exportStudentData());
+const tpAll = $('#tpAllTime');
+if(tpAll) tpAll.onchange = () => { if(!tpAll.checked){ const d = defaultWeek(); const f = $('#tpFrom'), t2 = $('#tpTo'); if(f) f.value = d.from; if(t2) t2.value = d.to; } renderTeacher(); };
 const lgp = $('#lgTeacherPin');
 if(lgp) lgp.addEventListener('keydown', e => { if(e.key === 'Enter') teacherGateLogin(); });
 
+/* ---------- كل الفترات + تصدير بيانات الطالبة للمعلمة ---------- */
+function allTimeRange(){
+  let min = null;
+  getRegistry().forEach(st => {
+    readUser(st.id, 'attempts', []).forEach(a => { if(!min || a.date < min) min = a.date; });
+    Object.keys(st.logins || {}).forEach(d => { if(!min || d < min) min = d; });
+  });
+  return { from: min || defaultWeek().from, to: today() };
+}
+function exportStudentData(){
+  const st = getRegistry().find(x => x.id === U.id);
+  if(!st){ toast('لا توجد بيانات للتصدير'); return; }
+  const data = { app:'nafas-training-3m', version:1, kind:'student', exportedAt:new Date().toISOString(),
+    students: [{ id:st.id, name:st.name, school:st.school, cls:st.cls, firstSeen:st.firstSeen, lastSeen:st.lastSeen,
+      sessions:st.sessions, logins:st.logins, track:st.track || '',
+      profile: readUser(st.id,'profile',{}), progress: readUser(st.id,'progress',{}), attempts: readUser(st.id,'attempts',[]) }],
+    plans: getPlans().filter(p => p.sid === st.id) };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'بيانات-' + (st.name || 'طالبة').replace(/\s+/g, '-') + '-' + today() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('تم تصدير بياناتك — أرسلي الملف لمعلمتك 📤');
+}
 /* ---------- الوضع الليلي ---------- */
 $('#themeBtn').onclick = () => {
   document.body.classList.toggle('dark');

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>تدريب نافس علوم | علوم الحياة و علوم الأرض والفضاء</title>
 <meta name="description" content="تدريب نافس علوم: تدريب مباشر على أسئلة نافس في علوم الحياة و علوم الأرض والفضاء للصف الثالث المتوسط، مع شرح المؤشر وناتج التعلم، وتلميحات، وإعادة محاولة، ومتابعة ولي الأمر.">
-<link rel="stylesheet" href="styles.css?v=14">
+<link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
 
@@ -163,7 +163,11 @@
         <label class="wk-range">من <input type="date" id="tpFrom"></label>
         <label class="wk-range">إلى <input type="date" id="tpTo"></label>
         <button class="btn btn-soft" id="tpRefresh">تحديث التحليل</button>
+        <label class="wk-range" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="tpAllTime"> كل الفترات</label>
         <span class="muted" id="tpRangeTxt"></span>
+      </div>
+      <div class="notice" id="tpNotice">
+        ℹ️ <b>ملاحظة مهمة:</b> سجلات الطالبات تُحفظ في <b>الجهاز الذي درّبت عليه</b> فقط. إذا كانت الطالبات يتدرّبن على أجهزة أخرى، اطلبي منهن ضغط «⬇ تصدير بياناتي للمعلمة» في صفحة «بياناتي في المنصة»، ثم استوردي الملف هنا بزر «⬆ استيراد». وفعّلي «كل الفترات» لرؤية كل إنجازاتهن.
       </div>
       <div class="grid-4" id="tpCards"></div>
       <div class="grid-2">
@@ -240,6 +244,7 @@
         <input id="pName" placeholder="الاسم الكامل" style="flex:1;min-width:190px">
         <input id="pSchool" placeholder="اسم المدرسة" style="flex:1;min-width:190px">
         <button class="btn btn-primary" onclick="saveProfile()">حفظ</button>
+        <button class="btn btn-ghost" id="exportMine" title="أرسلي ملف بياناتك للمعلمة">⬇ تصدير بياناتي للمعلمة</button>
       </div>
     </div>
 
@@ -434,14 +439,14 @@
 <div class="modal" id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
 
 <div id="printArea" aria-hidden="true"></div>
-<script src="data-f11.js?v=14"></script>
-<script src="data-f12.js?v=14"></script>
-<script src="data-f13.js?v=14"></script>
-<script src="data-f14.js?v=14"></script>
-<script src="data-e31.js?v=14"></script>
-<script src="data-e32.js?v=14"></script>
-<script src="data-e33.js?v=14"></script>
-<script src="data-figs.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="data-f11.js?v=16"></script>
+<script src="data-f12.js?v=16"></script>
+<script src="data-f13.js?v=16"></script>
+<script src="data-f14.js?v=16"></script>
+<script src="data-e31.js?v=16"></script>
+<script src="data-e32.js?v=16"></script>
+<script src="data-e33.js?v=16"></script>
+<script src="data-figs.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
