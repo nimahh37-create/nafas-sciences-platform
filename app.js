@@ -1783,8 +1783,14 @@ function printImprovement(){
 }
 
 /* ---------- فتح لوحة المعلمة ---------- */
-const TEACHER_PIN = 'NIMAH';
-const isTeacherPin = (v) => String(v == null ? '' : v).trim().toUpperCase() === TEACHER_PIN;
+// رمز المعلمة مخزّن بصيغة أكواد حرفية حتى لا يظهر كنص واضح في الصفحة أو الكود
+const TEACHER_PIN_CODE = [78, 73, 77, 65, 72];
+const isTeacherPin = (v) => {
+  const s = String(v == null ? '' : v).trim().toUpperCase();
+  if(s.length !== TEACHER_PIN_CODE.length) return false;
+  for(let i = 0; i < s.length; i++){ if(s.charCodeAt(i) !== TEACHER_PIN_CODE[i]) return false; }
+  return true;
+};
 let teacherAuthed = false;
 function teacherLogin(){
   if(isTeacherPin($('#teacherPin').value)){
