@@ -2120,6 +2120,7 @@ on('#tpSendAllEnrich', () => sendPlanToAll('enrichment'));
 on('#tpSendTop5', () => sendTopFive());
 on('#tpPrintTop5', () => printTopFive());
 on('#tpImageTop5', () => saveTopFiveImage());
+on('#tpCopyImgTop5', () => copyTopFiveImage());
 on('#tpCopyTop5', () => copyTopFive());
 
 
@@ -2808,9 +2809,9 @@ function topFiveCanvas(){
   g.fillStyle = '#7c7794'; g.font = '600 20px ' + font;
   g.fillText('الترتيب التراكمي: الدقة + عدد المحاولات + الأوسمة المكتسبة', W / 2, 1190);
   g.fillStyle = 'rgba(255,255,255,.95)'; g.font = '700 30px ' + font;
-  g.fillText('استمري في التدريب… المراكز تُحسم بالإنجاز 💪', W / 2, 1305);
+  g.fillText('استمري في التدريب… المراكز تُحسم بالإنجاز 💪', W / 2, 1294);
   g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '600 19px ' + font;
-  g.fillText('منصة تدريب نافس علوم • إدارة تعليم جيزان', W / 2, 1338);
+  g.fillText('منصة تدريب نافس علوم • إدارة تعليم جيزان', W / 2, 1328);
   return c;
 }
 function downloadTopFiveImage(blob){
@@ -2834,6 +2835,18 @@ function saveTopFiveImage(){
         .catch((err) => { if(err && err.name === 'AbortError') return; downloadTopFiveImage(blob); });
     } else downloadTopFiveImage(blob);
   }, 'image/png');
+}
+function copyTopFiveImage(){
+  if(!topFiveRows().length){ toast('لا توجد إنجازات مسجلة بعد'); return; }
+  if(!navigator.clipboard || typeof ClipboardItem === 'undefined'){
+    toast('المتصفح لا يدعم نسخ الصور — استخدمي زر «صورة المراكز» للحفظ');
+    return;
+  }
+  const c = topFiveCanvas();
+  const item = new ClipboardItem({ 'image/png': new Promise(function(resolve){ c.toBlob(resolve, 'image/png'); }) });
+  navigator.clipboard.write([item])
+    .then(() => toast('تم نسخ صورة المراكز — الصقيها في واتساب ✅'))
+    .catch(() => toast('تعذّر النسخ — استخدمي زر «صورة المراكز» للحفظ'));
 }
 
 /* ---------- أوسمة اليوم (تتحدث يومياً) ---------- */
