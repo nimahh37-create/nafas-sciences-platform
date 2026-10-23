@@ -317,7 +317,15 @@ body.dark .plan-day.done{background:#064e3b}
 
 /* ============ التقرير والطباعة ============ */
 #printArea{display:none}
-.report{font-family:var(--font);color:#111827;background:#fff;max-width:900px;margin:0 auto;padding:26px;direction:rtl}
+.report{font-family:var(--font);color:#111827;background:#fff;max-width:900px;margin:0 auto;padding:26px;direction:rtl;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.rep-podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0}
+.rep-pod{border:1px solid #e5e7eb;border-radius:14px;padding:12px;text-align:center;background:#faf9ff;break-inside:avoid}
+.rep-pod.gold{border-color:#f59e0b;background:#fffbeb}
+.rep-pod.silver{border-color:#9ca3af;background:#f8fafc}
+.rep-pod.bronze{border-color:#b45309;background:#fff7ed}
+.rep-pod .m{font-size:26px;line-height:1.2}
+.rep-pod b{display:block;font-size:13.5px;color:#4c1d95;margin:3px 0}
+.rep-pod span{font-size:11.5px;color:#555}
 .rep-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:4px solid #6d28d9;padding-bottom:12px}
 .rep-head h1{margin:0;font-size:24px;color:#4c1d95}
 .rep-head p{margin:4px 0 0;font-size:12.5px;color:#555}

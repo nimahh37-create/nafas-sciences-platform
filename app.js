@@ -2118,6 +2118,8 @@ on('#tpSendAllImprove', () => sendPlanToAll('improvement'));
 on('#tpSendAllRemedial', () => sendPlanToAll('remedial'));
 on('#tpSendAllEnrich', () => sendPlanToAll('enrichment'));
 on('#tpSendTop5', () => sendTopFive());
+on('#tpPrintTop5', () => printTopFive());
+on('#tpImageTop5', () => saveTopFiveImage());
 on('#tpCopyTop5', () => copyTopFive());
 
 
@@ -2694,6 +2696,144 @@ function copyTopFive(){
   if(navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(txt).then(done).catch(fallback);
   } else fallback();
+}
+
+/* ---------- تقرير المراكز الخمسة الأولى (طباعة / PDF) ---------- */
+function buildTopFiveReport(){
+  const all = studentRanking().filter(r => r.R.all.length > 0);
+  const top = all.slice(0, 5);
+  const medal = ['🥇','🥈','🥉','④','⑤'];
+  const sumAtt = top.reduce((s, r) => s + r.R.all.length, 0);
+  const sumMedals = top.reduce((s, r) => s + r.medals.length, 0);
+  const bestAcc = top.length ? top[0].R.acc : 0;
+  let podium = '';
+  if(top.length){
+    podium = '<div class="rep-podium">' + top.slice(0, 3).map((r, i) =>
+      '<div class="rep-pod ' + ['gold','silver','bronze'][i] + '"><div class="m">' + medal[i] + '</div>' +
+      '<b>' + esc(r.st.name) + '</b><span>' + r.R.acc + '% دقة • ' + r.R.all.length + ' محاولة • ' + r.medals.length + ' وسام</span></div>'
+    ).join('') + '</div>';
+  }
+  const tableRows = top.map((r, i) =>
+    '<tr><td><b>' + (i + 1) + '</b></td><td style="text-align:right">' + esc(r.st.name) + '</td>' +
+    '<td>' + esc(r.st.school || '—') + '</td><td>' + r.R.acc + '%</td><td>' + r.R.all.length + '</td>' +
+    '<td>' + r.medals.length + '</td><td>' + (r.medals.length ? r.medals.map(x => x.i).join(' ') : '—') + '</td></tr>'
+  ).join('');
+  return '<div class="report"><div class="rep-head"><div><h1>تقرير المراكز الخمسة الأولى — لوحة الشرف</h1>' +
+    '<p>تدريب نافس علوم — علوم الحياة وعلوم الأرض والفضاء (الصف الثالث المتوسط)</p></div>' +
+    '<div class="rep-brand">إدارة تعليم جيزان<br>إعداد المعلمة<br><b>نعمة هرشان</b></div></div>' +
+    '<div class="rep-meta"><div><b>تاريخ الإصدار:</b> ' + new Date().toLocaleDateString('ar-SA') + '</div>' +
+    '<div><b>عدد الطالبات في الترتيب:</b> ' + all.length + '</div>' +
+    '<div><b>أساس الترتيب:</b> الدقة + عدد المحاولات + الأوسمة المكتسبة</div>' +
+    '<div><b>النطاق:</b> تراكمي حتى تاريخ الإصدار</div></div>' +
+    (top.length ? podium +
+      '<h2>تفاصيل المراكز الخمسة الأولى</h2><table class="rep-table"><tr><th>المركز</th><th>الطالبة</th><th>المدرسة</th><th>الدقة</th><th>المحاولات</th><th>الأوسمة</th><th>أوسمة مميزة</th></tr>' + tableRows + '</table>' +
+      '<div class="rep-kpis"><div><b>' + bestAcc + '%</b><span>أعلى دقة</span></div><div><b>' + sumAtt + '</b><span>محاولات المراكز الخمسة</span></div>' +
+      '<div><b>' + sumMedals + '</b><span>أوسمة المراكز الخمسة</span></div><div><b>' + all.length + '</b><span>طالبة في الترتيب</span></div></div>' +
+      '<p class="rep-note">🎉 نهنئ الطالبات المتميزات على وصولهن إلى المراكز الخمسة الأولى، ونشجّع جميع الطالبات على مواصلة التدريب — كل محاولة تقرّبك من القمة. استمري 💪</p>'
+      : '<p class="rep-note">لا توجد إنجازات مسجلة بعد — ستظهر لوحة الشرف فور بدء الطالبات التدريب.</p>') +
+    '<div class="rep-sign"><div>إعداد المعلمة: نعمة هرشان</div><div>الختم: ........................</div></div>' +
+    '<p class="rep-foot">تقرير صادر من منصة «تدريب نافس علوم» — إدارة تعليم جيزان — إعداد المعلمة نعمة هرشان.</p></div>';
+}
+function printTopFive(){
+  $('#printArea').innerHTML = buildTopFiveReport();
+  document.body.classList.add('printing');
+  setTimeout(function(){ window.print(); }, 150);
+}
+
+/* ---------- صورة المراكز (PNG جاهزة للمشاركة) ---------- */
+function topFiveCanvas(){
+  const top = topFiveRows();
+  const W = 1080, H = 1350;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const font = '"Segoe UI", Tahoma, Arial, sans-serif';
+  const rr = (px, py, w, h, r) => {
+    g.beginPath();
+    g.moveTo(px + r, py);
+    g.arcTo(px + w, py, px + w, py + h, r);
+    g.arcTo(px + w, py + h, px, py + h, r);
+    g.arcTo(px, py + h, px, py, r);
+    g.arcTo(px, py, px + w, py, r);
+    g.closePath();
+  };
+  const fit = (txt, maxW, size, weight, color, px, py, align) => {
+    let s = size;
+    g.font = weight + ' ' + s + 'px ' + font;
+    while(s > 18 && g.measureText(txt).width > maxW){ s -= 1; g.font = weight + ' ' + s + 'px ' + font; }
+    let t = txt;
+    if(g.measureText(t).width > maxW){
+      while(t.length > 3 && g.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+      t += '…';
+    }
+    g.fillStyle = color; g.textAlign = align || 'right'; g.fillText(t, px, py);
+    return s;
+  };
+  const bg = g.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#4c1d95'); bg.addColorStop(.55, '#6d28d9'); bg.addColorStop(1, '#db2777');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(255,255,255,.07)';
+  [[95,130,230],[985,1170,300],[1040,110,170],[40,1160,190]].forEach(d => { g.beginPath(); g.arc(d[0], d[1], d[2], 0, Math.PI * 2); g.fill(); });
+  g.fillStyle = 'rgba(255,255,255,.16)';
+  for(let i = 0; i < 46; i++){ g.beginPath(); g.arc((i * 137) % W, (i * 251) % H, 1.5 + (i % 3), 0, Math.PI * 2); g.fill(); }
+  g.textAlign = 'center'; g.direction = 'rtl';
+  g.fillStyle = '#fff'; g.font = '800 56px ' + font; g.fillText(APP.name, W / 2, 104);
+  g.fillStyle = 'rgba(255,255,255,.88)'; g.font = '600 24px ' + font;
+  g.fillText('إدارة تعليم جيزان • إعداد المعلمة ' + APP.teacher, W / 2, 148);
+  const cx = 60, cy = 196, cw = 960, ch = 1058;
+  g.save(); g.shadowColor = 'rgba(20,10,40,.28)'; g.shadowBlur = 40; g.shadowOffsetY = 16;
+  rr(cx, cy, cw, ch, 36); g.fillStyle = '#fff'; g.fill(); g.restore();
+  g.fillStyle = '#4c1d95'; g.font = '800 50px ' + font;
+  g.fillText('🏆 المراكز الخمسة الأولى', W / 2, 282);
+  g.fillStyle = '#7c7794'; g.font = '600 23px ' + font;
+  g.fillText('لوحة الشرف • ' + today(), W / 2, 320);
+  g.fillStyle = '#f59e0b'; rr(W / 2 - 90, 338, 180, 8, 4); g.fill();
+  const colors = ['#f59e0b', '#94a3b8', '#b45309', '#6d28d9', '#6d28d9'];
+  const rowX = cx + 30, rowW = cw - 60, rowH = 140, rowGap = 12, rowTop = 378;
+  top.forEach((r, i) => {
+    const y = rowTop + i * (rowH + rowGap);
+    g.fillStyle = i === 0 ? '#fffbeb' : (i % 2 ? '#faf9ff' : '#f5f3ff');
+    rr(rowX, y, rowW, rowH, 22); g.fill();
+    if(i === 0){ g.strokeStyle = '#fcd34d'; g.lineWidth = 3; rr(rowX, y, rowW, rowH, 22); g.stroke(); }
+    const bx = rowX + rowW - 78, by = y + rowH / 2;
+    g.beginPath(); g.arc(bx, by, 39, 0, Math.PI * 2); g.fillStyle = colors[i]; g.fill();
+    g.fillStyle = '#fff'; g.font = '800 38px ' + font; g.textAlign = 'center'; g.fillText(String(i + 1), bx, by + 14);
+    fit(r.st.name, 470, 34, '800', '#1e1b31', bx - 62, y + 60, 'right');
+    fit(r.st.school || '—', 470, 21, '600', '#7c7794', bx - 62, y + 99, 'right');
+    g.textAlign = 'left';
+    g.fillStyle = '#6d28d9'; g.font = '800 36px ' + font; g.fillText(r.R.acc + '%', rowX + 42, y + 64);
+    g.fillStyle = '#7c7794'; g.font = '600 20px ' + font;
+    g.fillText(r.R.all.length + ' محاولة • ' + r.medals.length + ' وسام', rowX + 42, y + 100);
+  });
+  g.textAlign = 'center';
+  g.fillStyle = '#7c7794'; g.font = '600 20px ' + font;
+  g.fillText('الترتيب التراكمي: الدقة + عدد المحاولات + الأوسمة المكتسبة', W / 2, 1190);
+  g.fillStyle = 'rgba(255,255,255,.95)'; g.font = '700 30px ' + font;
+  g.fillText('استمري في التدريب… المراكز تُحسم بالإنجاز 💪', W / 2, 1305);
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.font = '600 19px ' + font;
+  g.fillText('منصة تدريب نافس علوم • إدارة تعليم جيزان', W / 2, 1338);
+  return c;
+}
+function downloadTopFiveImage(blob){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'المراكز-الخمسة-الأولى-' + today() + '.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2500);
+  toast('تم تنزيل صورة المراكز ✅');
+}
+function saveTopFiveImage(){
+  if(!topFiveRows().length){ toast('لا توجد إنجازات مسجلة بعد'); return; }
+  const c = topFiveCanvas();
+  c.toBlob(function(blob){
+    if(!blob){ toast('تعذّر إنشاء الصورة'); return; }
+    let file = null;
+    try { file = new File([blob], 'المراكز-الخمسة-الأولى.png', { type:'image/png' }); } catch(e){}
+    if(file && navigator.canShare && navigator.canShare({ files:[file] })){
+      navigator.share({ files:[file], title:'المراكز الخمسة الأولى', text: topFivePlainText() })
+        .then(() => toast('تمت مشاركة الصورة ✅'))
+        .catch((err) => { if(err && err.name === 'AbortError') return; downloadTopFiveImage(blob); });
+    } else downloadTopFiveImage(blob);
+  }, 'image/png');
 }
 
 /* ---------- أوسمة اليوم (تتحدث يومياً) ---------- */
