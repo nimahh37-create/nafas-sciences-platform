@@ -2117,6 +2117,8 @@ on('#bellBtn', () => openInbox());
 on('#tpSendAllImprove', () => sendPlanToAll('improvement'));
 on('#tpSendAllRemedial', () => sendPlanToAll('remedial'));
 on('#tpSendAllEnrich', () => sendPlanToAll('enrichment'));
+on('#tpSendTop5', () => sendTopFive());
+on('#tpCopyTop5', () => copyTopFive());
 
 
 /* ---------- اختيار الدور في شاشة الدخول ---------- */
@@ -2633,9 +2635,9 @@ function studentRanking(){
 function renderTopFive(){
   const host = $('#tpTop5');
   if(!host) return;
-  const rows = studentRanking();
+  const rows = studentRanking().filter(r => r.R.all.length > 0);
   const top = rows.slice(0, 5);
-  if(!top.length){ host.innerHTML = '<div class="empty">لا توجد طالبات بعد.</div>'; return; }
+  if(!top.length){ host.innerHTML = '<div class="empty">لا توجد إنجازات مسجلة بعد — ستظهر المراكز فور بدء الطالبات التدريب.</div>'; return; }
   const medal = ['🥇', '🥈', '🥉', '④', '⑤'];
   host.innerHTML = '<div class="podium">' + top.map((r, i) =>
     '<div class="pod p' + (i + 1) + '"><div class="pod-m">' + medal[i] + '</div>' +
@@ -2643,6 +2645,55 @@ function renderTopFive(){
     '<div class="pod-school">' + esc(r.st.school || '—') + '</div>' +
     '<div class="pod-stats"><span>' + r.R.acc + '٪</span><span>' + r.R.all.length + ' محاولة</span><span>' + r.medals.length + ' وسام</span></div>' +
     '<div class="pod-medals">' + medalIcons(r.medals) + '</div></div>').join('') + '</div>';
+}
+function topFiveRows(){ return studentRanking().filter(r => r.R.all.length > 0).slice(0, 5); }
+function topFivePlainText(){
+  const top = topFiveRows();
+  const medal = ['🥇','🥈','🥉','④','⑤'];
+  let txt = '🏆 المراكز الخمسة الأولى — ' + APP.name + '\n';
+  txt += 'إعداد المعلمة: ' + APP.teacher + ' • ' + today() + '\n\n';
+  if(!top.length){ txt += 'لا توجد إنجازات مسجلة بعد — كوني أول من يبدأ التدريب 💪'; return txt; }
+  top.forEach((r, i) => {
+    txt += medal[i] + ' ' + r.st.name + ' — ' + r.R.acc + '٪ دقة • ' + r.R.all.length + ' محاولة • ' + r.medals.length + ' وسام\n';
+  });
+  txt += '\nالترتيب التراكمي يُحسب من الدقة وعدد المحاولات والأوسمة المكتسبة.';
+  return txt;
+}
+function topFiveTextFor(st){
+  const top = topFiveRows();
+  const base = topFivePlainText();
+  const idx = st ? top.findIndex(r => r.st.id === st.id) : -1;
+  if(idx >= 0) return '🎉 مبارك لكِ المركز ' + (idx + 1) + '!\n\n' + base + '\n\nاستمري في التميز 🌟';
+  return base + '\n\nاستمري في التدريب للوصول إلى المراكز الأولى 💪';
+}
+function sendTopFive(){
+  const reg = getRegistry();
+  if(!reg.length){ toast('لا توجد طالبات مسجلات'); return; }
+  if(!topFiveRows().length){ toast('لا توجد إنجازات مسجلة بعد'); return; }
+  if(!confirm('سيتم إرسال المراكز الخمسة الأولى إلى جميع الطالبات (' + reg.length + ').\nأبقي الصفحة مفتوحة حتى يكتمل الإرسال. متابعة؟')) return;
+  const list = getPlans();
+  const now = Date.now();
+  reg.forEach((st, i) => {
+    list.push({ id:'p' + (now + i), sid:st.id, name:st.name, type:'ranking',
+      title:'🏆 المراكز الخمسة الأولى', text: topFiveTextFor(st), date:today(),
+      time:new Date().toLocaleTimeString('ar-SA'), read:false });
+  });
+  savePlans(list);
+  list.slice(-reg.length).forEach((p, i) => setTimeout(() => { if(typeof syncPushPlan === 'function') syncPushPlan(p); }, (i + 1) * 2600));
+  renderTeacher(); renderSent(); renderInbox();
+  toast('جارٍ إرسال المراكز إلى ' + reg.length + ' طالبة… أبقي الصفحة مفتوحة 📤');
+}
+function copyTopFive(){
+  const txt = topFivePlainText();
+  const done = () => toast('تم نسخ الترتيب ✅');
+  const fallback = () => {
+    const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch(e){ toast('تعذّر النسخ'); }
+    ta.remove();
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(fallback);
+  } else fallback();
 }
 
 /* ---------- أوسمة اليوم (تتحدث يومياً) ---------- */

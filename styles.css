@@ -438,6 +438,7 @@ body.dark .logingate{background:linear-gradient(160deg,#1b1730,#2a1f2e 60%,#1d23
 .plan-msg.remedial{border-inline-start:4px solid var(--amber)}
 .plan-msg.enrichment{border-inline-start:4px solid var(--emerald)}
 .plan-msg.improvement,.plan-msg.note{border-inline-start:4px solid var(--violet)}
+.plan-msg.ranking{border-inline-start:4px solid #d4a017;background:linear-gradient(180deg,var(--bg2),#fffbea)}
 .pm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 .pm-head b{font-size:14.5px;color:var(--violet-d)}
 .pm-head small{color:var(--muted);font-size:12px}
