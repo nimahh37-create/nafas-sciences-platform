@@ -2838,15 +2838,19 @@ function saveTopFiveImage(){
 }
 function copyTopFiveImage(){
   if(!topFiveRows().length){ toast('لا توجد إنجازات مسجلة بعد'); return; }
-  if(!navigator.clipboard || typeof ClipboardItem === 'undefined'){
+  if(!navigator.clipboard || typeof navigator.clipboard.write !== 'function' || typeof ClipboardItem === 'undefined'){
     toast('المتصفح لا يدعم نسخ الصور — استخدمي زر «صورة المراكز» للحفظ');
     return;
   }
-  const c = topFiveCanvas();
-  const item = new ClipboardItem({ 'image/png': new Promise(function(resolve){ c.toBlob(resolve, 'image/png'); }) });
-  navigator.clipboard.write([item])
-    .then(() => toast('تم نسخ صورة المراكز — الصقيها في واتساب ✅'))
-    .catch(() => toast('تعذّر النسخ — استخدمي زر «صورة المراكز» للحفظ'));
+  try {
+    const c = topFiveCanvas();
+    const item = new ClipboardItem({ 'image/png': new Promise(function(resolve){ c.toBlob(resolve, 'image/png'); }) });
+    navigator.clipboard.write([item])
+      .then(() => toast('تم نسخ صورة المراكز — الصقيها في واتساب ✅'))
+      .catch(() => toast('تعذّر النسخ — استخدمي زر «صورة المراكز» للحفظ'));
+  } catch(e){
+    toast('تعذّر النسخ — استخدمي زر «صورة المراكز» للحفظ');
+  }
 }
 
 /* ---------- أوسمة اليوم (تتحدث يومياً) ---------- */
